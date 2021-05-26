@@ -16,6 +16,8 @@ contract Staking is Ownable {
 
     uint public stakeCounter;
 
+    bool public stakingPaused;
+
     struct stakingInfo {
         uint amount;
         bool claimed;
@@ -32,6 +34,7 @@ contract Staking is Ownable {
     constructor(FontTokenAddress) public{
         stakeCounter = 0;
         FONT_ERC20 = IERC20(FontTokenAddress);
+        paused = false;
     }
     
 
@@ -45,7 +48,7 @@ contract Staking is Ownable {
     */
     
     function stake(uint _amount, uint _unlockTime) external public returns (uint256 _stake_id){
-        
+        require(!stakingPaused);
         require(_amount > 0);
 
         uint _stake_id = stakeCounter.add(1);
@@ -66,6 +69,10 @@ contract Staking is Ownable {
 
         stakeCounter = _stake_id;
 
+        uint256 allowance = FONT_ERC20.allowance(msg.sender, address(this));
+        require(allowance >= _amount, "Check the token allowance");
+
+        require(FONT_ERC20.transferFrom(msg.sender, address(this), _amount));
         event LogStake(msg.sender, _stake_id,  _amount, _unlockTime);
     }
     
@@ -111,7 +118,17 @@ contract Staking is Ownable {
         );
     }
 
+    //Pause the staking
+    function pauseStaking() external onlyOwner {
+      stakingPaused = true;
+    }
 
+    //UnPause the staking
+    function unpauseStaking() external onlyOwner {
+      stakingPaused = false;
+    }    
+
+    //emergency 
 
 
 }
