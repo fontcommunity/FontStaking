@@ -21,7 +21,7 @@ contract Staking is Ownable {
     /**********************************************************************************************************/
 
     
-    uint32 taxFee = 100; // 1 = 0.01%
+    uint256 taxFee = 100; // 1 = 0.01%
     
     IERC20 public FONT_ERC20; //Font token address
 
@@ -32,8 +32,8 @@ contract Staking is Ownable {
     uint256 public minStakeTime = 2592000; //30 days in second
     uint256 public lastRewardTime = 0;
     uint256 public stakeCounter; //Current stake id 
-    uint256 public totalStaked = 0; //Total fonts currently staked
-    uint256 public maxSnapshotLifetime = 14400; //
+    uint256 public totalStaked = 0; //Total $FONTs currently staked
+    uint256 public maxSnapshotLifetime = 14400; //Max Time intervel for snapshot
 
     //list of accounts excluded from rewards 
     mapping (address => bool) private excludedAccount; 
@@ -46,7 +46,9 @@ contract Staking is Ownable {
         address token; //ERC20 token for rewards
         bool status; //current status 
         uint256 balance; //balance of this token
+        uint256 minBalance; //Minimum balance to send rewards / No use of spending 1$ to 1000 people. 
     }
+
     mapping (address => RewardToken) public rewardTokens;
     
 
@@ -177,21 +179,25 @@ contract Staking is Ownable {
 
 
     //Get total FONTs staked per address. 
+    //@done
     function getStakedPerAddress(address _address) external view returns (uint256) {
         return usersStake[_address];
     }
 
     //Get detail about single stake info by address and id
+
     function getStakeByID(uint256 _stake_id) external view returns (stakingInfo memory) {
         return StakeMap[_stake_id];
     }
 
     //Pause the staking
+    //@done
     function pauseStaking() external onlyOwner {
       stakingPaused = true;
     }
 
     //UnPause the staking
+    //@done
     function unpauseStaking() external onlyOwner {
       stakingPaused = false;
     }    
@@ -203,21 +209,24 @@ contract Staking is Ownable {
     /**********************************************************************************************************/
     
     //Change tax fee
+    //@done
     event changedTaxFee(uint256);
-    function setTaxFees(uint32 _fees) external onlyOwner {
+    function setTaxFees(uint256 _fees) external onlyOwner {
         taxFee = _fees;
         emit changedTaxFee(_fees);
     }
     
     //Add an account to exclude from payment splits and rewards. 
     //this is to exclude the team / test accounts. 
+    //@done
     event accountExcluded(address);
-    function excludeAccount(address _address) external onlyOwner{
+    function excludeAccount(address _address) external onlyOwner {
         excludedAccount[_address] = true;
         emit accountExcluded(_address);
     }
 
     //Add an account to include from payment splits and rewards. 
+    //@done
     event accountIncluded(address);
     function includeAccount(address _address) external onlyOwner{
         excludedAccount[_address] = false;
