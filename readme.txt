@@ -15,3 +15,9 @@ WETH from ETH
 Full end to end Testing 
 
 Add mininum balance to withdrawal
+
+
+What if people witdraw tokens by one ERC after one 
+
+
+make it claimable 
