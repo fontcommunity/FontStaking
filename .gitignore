@@ -6,4 +6,6 @@
 /artifacts
 /.openzeppelin
 /secrets.json
+**/.DS_Store
+/**/.DS_Store
 /sregate.js
