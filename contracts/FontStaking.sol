@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/utils/Context.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract Staking is AccessControl {
+contract FontStaking is AccessControl {
 
     using SafeMath for uint;    
     using SafeMath for uint8;
@@ -29,8 +29,9 @@ contract Staking is AccessControl {
     address font_token_address = 0x4C25Bdf026Ea05F32713F00f73Ca55857Fbf6342; //token address of the font
     uint256 public maxSnapshotLifetime = 14400; //Max Time(in seconds) intervel for snapshot. 4 hours by default
     uint256 public minSnapshotInterval = 3600;
-    uint256 public minStakeAmount = 500 * (10**18); // Minimum eligible fonts for staking 
     uint256 public minStakeTime = 2592000; //30 days in second
+    uint256 public minStakeAmount = 500 * (10**18); // Minimum eligible fonts for staking 
+    
     
     IERC20 public FONT_ERC20; //Font token address
 
@@ -89,9 +90,9 @@ contract Staking is AccessControl {
     //User reward balance claimable
     mapping (address => mapping(address => uint256)) public UserRewardBalance;
     
-    constructor()  {
+    constructor(address _font_token_address)  {
         stakeCounter = 0;
-        FONT_ERC20 = IERC20(font_token_address); 
+        FONT_ERC20 = IERC20(_font_token_address); 
         ownerAddress = msg.sender;
         stakingPaused = false;
         _setupRole(ADMIN_ROLE, msg.sender); // Assign admin role to contract creator
@@ -143,9 +144,9 @@ contract Staking is AccessControl {
     event UnStaked(address _address, uint256 _stake_id, uint256 amount, uint256 _tax);
     function unStake(uint256 _stake_id) external {
         require(StakeMap[_stake_id].user == msg.sender, 'Denied');
+        require(!StakeMap[_stake_id].claimed, 'Claimed');
         require(usersStake[msg.sender] > 0, 'No user balance');
         require(totalStaked > 0, 'No FONT Balance');
-        require(!StakeMap[_stake_id].claimed, 'Claimed');
         require(StakeMap[_stake_id].amount > 0, 'No Stake Amount');
 
         uint256 _amount = StakeMap[_stake_id].amount; //@todo no need this variable
@@ -325,6 +326,17 @@ contract Staking is AccessControl {
         revokeRole(ADMIN_ROLE, _address);
     }    
 
+
+    //change the time settings 
+    event TimingsChanged(uint256, uint256, uint256);
+    function setTimings(uint256 _maxSnapshotLifetime, uint256 _minSnapshotInterval, uint256 _minStakeTime) external {
+        require(msg.sender == ownerAddress, "Denied");
+        maxSnapshotLifetime = _maxSnapshotLifetime; 
+        minSnapshotInterval = _minSnapshotInterval;
+        minStakeTime = _minStakeTime; 
+        emit TimingsChanged(_maxSnapshotLifetime, _minSnapshotInterval, _minStakeTime);
+    }
+
     /**********************************************************************************************************/
     /************************************************   views  ************************************************/
     /**********************************************************************************************************/
@@ -381,7 +393,7 @@ contract Staking is AccessControl {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
 
         //requires //do not call often or abuse it and to avoid calling 
-        require((block.timestamp - lastSnapshotTime) > lastSnapshotTime, 'Wait');
+        require((block.timestamp - lastSnapshotTime) > lastSnapshotTime, 'Wait'); //@todo, check this, this will never work
 
         uint256 _totalEligibleFontsForRewards = 0;
 

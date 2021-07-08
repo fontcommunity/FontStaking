@@ -51,6 +51,9 @@ claimRewards
 
 Need test font, 
     test erc20s 
+    payment erc20s 
+    addresses 
+    limited time schedule 
 
 
 ====================================================================================================================================
