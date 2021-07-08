@@ -304,7 +304,7 @@ contract FontStaking is AccessControl {
     function burnFont() external {
         uint256 _totalTaxAmount = totalTaxAmount;
         totalTaxAmount = 0;
-        FONT_ERC20.safeTransfer(address(0), _totalTaxAmount);
+        FONT_ERC20.safeTransfer(0x000000000000000000000000000000000000dEaD, _totalTaxAmount);
         FontBurned(totalTaxAmount);
     }
 
@@ -358,6 +358,10 @@ contract FontStaking is AccessControl {
             return SnapShot[lastSnapshotTime][_user].mul(totalEligibleFontsForRewards).div(100);
         }
         return 0;
+    }
+
+    function getTaxFee() external view returns (uint256) {
+        return taxFee;
     }
 
 
