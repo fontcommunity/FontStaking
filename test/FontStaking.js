@@ -412,10 +412,10 @@ describe("FONT Staking", function() {
                 
 
         
-        var debuggered = await fontStakingContract.connect(actingAddress).debugger();
-        for(let a in debuggered) {
-            console.log("debuggered" + a, debuggered[a].toString());
-        }
+        //var debuggered = await fontStakingContract.connect(actingAddress).debugger();
+        //for(let a in debuggered) {
+        //    console.log("debuggered" + a, debuggered[a].toString());
+        //}
         
 
 

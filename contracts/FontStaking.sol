@@ -449,10 +449,9 @@ contract FontStaking is AccessControl {
                 if(_token_balance >= rewardTokens[_tokens[i]].minBalance) { 
                     for(uint256 _user = 0; _user < SnapShotUsers[lastSnapshotTime].length; _user++) { 
                         __address = SnapShotUsers[lastSnapshotTime][_user];
-                        if(SnapShot[lastSnapshotTime][__address] > 0) {
-                            //_rewardAmount = ;//;
+                        //if(SnapShot[lastSnapshotTime][__address] > 0) {
                             UserRewardBalance[__address][_tokens[i]] = UserRewardBalance[__address][_tokens[i]].add(SnapShot[lastSnapshotTime][__address].mul(_token_balance).div(totalEligibleFontsForRewards));
-                        } //check if user in this snapshot have enough balance                         
+                        //} //check if user in this snapshot have enough balance                         
                     } //take all the users in current snapshop
                 }
             } //check if reward token is enabled and its not font token 
@@ -487,10 +486,10 @@ contract FontStaking is AccessControl {
     /************** Testing functions here ********************/
     /****************************************************************/
 
-    function debugger() external view returns (uint256, uint256, uint256, uint256, uint256, uint256, uint256) {
+    //function debugger() external view returns (uint256, uint256, uint256, uint256, uint256, uint256, uint256) {
              
-        return (ddtotalTokens,ddtotalTokensenabled ,ddtotalTokensBalance, ddtotalusers, ddtotalusersWithMoney, ddtotalreward, totalEligibleFontsForRewards);
-    }
+      //  return (ddtotalTokens,ddtotalTokensenabled ,ddtotalTokensBalance, ddtotalusers, ddtotalusersWithMoney, ddtotalreward, totalEligibleFontsForRewards);
+    //}
     
 }
 
