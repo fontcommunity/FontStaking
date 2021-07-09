@@ -43,7 +43,7 @@ contract FontStaking is AccessControl {
     uint256 public lastSnapshotTime; //Last time the snapshot made
 
     //stake id to skip, this helps to reduce gas as time goes. 
-    uint256 firstUnclaimedStakeId = 0;    
+    uint256 firstUnclaimedStakeId = 1;    
 
     //Eligible number of fonts for rewards, this helps to calculate user share of rewards 
     uint256 totalEligibleFontsForRewards = 0; //This resets often
@@ -89,7 +89,8 @@ contract FontStaking is AccessControl {
 
     //User reward balance claimable
     mapping (address => mapping(address => uint256)) public UserRewardBalance;
-    
+
+
     constructor(address _font_token_address)  {
         stakeCounter = 0;
         FONT_ERC20 = IERC20(_font_token_address); 
@@ -354,16 +355,28 @@ contract FontStaking is AccessControl {
     //get current reward share percentage per address.
     //
     function getCurrentRewardShare(address _user) external view returns (uint256) {
-        if(SnapShot[lastSnapshotTime][_user] > 0 && totalEligibleFontsForRewards > 0) {
-            return SnapShot[lastSnapshotTime][_user].mul(totalEligibleFontsForRewards).div(100);
-        }
-        return 0;
+        return SnapShot[lastSnapshotTime][_user];
+    }
+
+    function getUserRewardBalance(address _token, address _user) external view returns (uint256) {
+        return UserRewardBalance[_user][_token];
     }
 
     function getTaxFee() external view returns (uint256) {
         return taxFee;
     }
 
+    function getTotalEligibleFontsForRewards() external view returns (uint256) {
+        return totalEligibleFontsForRewards;
+    }
+
+    function getlastSnapshotTime() external view returns (uint256) {
+        return lastSnapshotTime;
+    }
+
+    function getSnapShotUsers(uint256 _snapshotTime) external view returns (address[] memory) {
+        return SnapShotUsers[_snapshotTime];
+    }
 
     /**********************************************************************************************************/
     /************************************************   Helpers  **********************************************/
@@ -388,21 +401,18 @@ contract FontStaking is AccessControl {
     /**********************************************************************************************************/
     /************************************************  Rewards  **********************************************/
     /**********************************************************************************************************/
-    //reward distributor function, can call by anyone 
-    
-
     //Take snapshot of reward eligibility
     event SnapShoted(uint256, uint256);
     function takeShapshot() external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
-
         //requires //do not call often or abuse it and to avoid calling 
-        require((block.timestamp - lastSnapshotTime) > lastSnapshotTime, 'Wait'); //@todo, check this, this will never work
-
+        //require((block.timestamp - lastSnapshotTime) > lastSnapshotTime, 'Wait'); //@todo, check this, this will never work
+        require(lastSnapshotTime < (block.timestamp - minSnapshotInterval), "Wait");
+        require(lastSnapshotTime != block.timestamp, "Already");
         uint256 _totalEligibleFontsForRewards = 0;
-
-        //loop through all the stakes 
-        for(uint256 i = firstUnclaimedStakeId; i <= stakeCounter; i++) {
+        
+        for(uint256 i = 0; i <= stakeCounter; i++) {
+            
             //check if user is not already claimed, have crosed the date, and account is not excluded to get rewards
             if(!StakeMap[i].claimed && (StakeMap[i].lockedTime + StakeMap[i].duration < block.timestamp) && !excludedAccount[StakeMap[i].user]) {
                 //calculate the total eligible fonts for staking rewards 
@@ -429,34 +439,28 @@ contract FontStaking is AccessControl {
         //make sure there is enough staking from last snapshot
         require(totalEligibleFontsForRewards > 0, '0 stake'); //@done
         
-        uint256 _rewardAmount = 0;
+        //uint256 _rewardAmount = 0;
         uint256 _token_balance = 0;
         address __address;
 
-        for(uint256 i = 0; i <= _tokens.length; i++ ) {
-
-            if(rewardTokens[_tokens[i]].status && _tokens[i] != font_token_address) {
-
+        for(uint256 i = 0; i < _tokens.length; i++ ) {
+            if(rewardTokens[_tokens[i]].status) {
                 _token_balance = IERC20(_tokens[i]).balanceOf(address(this));
-                if(_token_balance > rewardTokens[_tokens[i]].minBalance) { //make sure contract holds minimum balance
-                    for(uint256 _user = 0; _user <= SnapShotUsers[lastSnapshotTime].length; _user++) { //@todo check loop 
+                if(_token_balance >= rewardTokens[_tokens[i]].minBalance) { 
+                    for(uint256 _user = 0; _user < SnapShotUsers[lastSnapshotTime].length; _user++) { 
                         __address = SnapShotUsers[lastSnapshotTime][_user];
                         if(SnapShot[lastSnapshotTime][__address] > 0) {
-                            _rewardAmount = SnapShot[lastSnapshotTime][__address].div(totalEligibleFontsForRewards).mul(_token_balance);
-                            //SnapShot[lastSnapshotTime][__address] = 0;        
-                            UserRewardBalance[__address][_tokens[i]] = UserRewardBalance[__address][_tokens[i]].add(_rewardAmount);
+                            //_rewardAmount = ;//;
+                            UserRewardBalance[__address][_tokens[i]] = UserRewardBalance[__address][_tokens[i]].add(SnapShot[lastSnapshotTime][__address].mul(_token_balance).div(totalEligibleFontsForRewards));
                         } //check if user in this snapshot have enough balance                         
                     } //take all the users in current snapshop
-                } // check if we have enough balance per contract 
-
+                }
             } //check if reward token is enabled and its not font token 
 
         } // Main for loop
 
         //update the needed metadata 
-
         lastRewardTime = block.timestamp;
-        totalEligibleFontsForRewards = 0; //reset it
 
         //emit 
         emit RewardsDistributed(_tokens.length, SnapShotUsers[lastSnapshotTime].length);
@@ -464,12 +468,12 @@ contract FontStaking is AccessControl {
     }
 
     //Users can cliam the reward. Can claim the multiple number of tokens in single shot
-    //@done
+    //@todo, only allowed tokens
     event RewardClaimed(address, uint256);
     function claimRewards(address[] memory _tokens) public {
         //loop all tokens 
         uint256 _amount = 0;
-        for(uint256 i = 0; i <= _tokens.length; i++ ) {
+        for(uint256 i = 0; i < _tokens.length; i++ ) {
             _amount = UserRewardBalance[msg.sender][_tokens[i]];
             if(_amount > 0) {
                 UserRewardBalance[msg.sender][_tokens[i]] = 0;
@@ -478,6 +482,16 @@ contract FontStaking is AccessControl {
         }
         emit RewardClaimed(msg.sender, block.timestamp);
     }
+
+    /****************************************************************/
+    /************** Testing functions here ********************/
+    /****************************************************************/
+
+    function debugger() external view returns (uint256, uint256, uint256, uint256, uint256, uint256, uint256) {
+             
+        return (ddtotalTokens,ddtotalTokensenabled ,ddtotalTokensBalance, ddtotalusers, ddtotalusersWithMoney, ddtotalreward, totalEligibleFontsForRewards);
+    }
+    
 }
 
 

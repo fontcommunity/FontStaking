@@ -28,6 +28,9 @@ describe("FONT Staking", function() {
   let dstToken;
   let cateswap;
 
+  const decStr = "000000000000000000";
+  const blnbln = "1000000000000000000";
+
   const delay = ms => new Promise(res => setTimeout(res, ms));
 
   var stakeIdCounter = 0;
@@ -38,7 +41,10 @@ describe("FONT Staking", function() {
 
     
 
-    [owner, addr1, addr2, addr3, addr4, addr5, addr6, ...addrs] = await ethers.getSigners();
+    [owner, addr1, addr2, addr3, addr4, addr5, addr6, addr7, addr8, ...addrs] = await ethers.getSigners(25);
+
+    diffAccounts = await ethers.getSigners(25);
+
 
     FontToken = await ethers.getContractFactory("MockToken");
 
@@ -78,6 +84,31 @@ describe("FONT Staking", function() {
 
   });
 
+
+  async function stakeAll(staketime) {
+    await fontStakingContract.connect(owner).setTimings(1,1,staketime);
+    //var stakers = [
+    //    addr5,addr6,addr7,addr8
+    //];
+    var stakers;
+    var ownr;
+    [ownr, ...stakers] = await ethers.getSigners(25);
+
+    //console.log("total stakes :: ", stakers.length);
+
+    for(let u in stakers) {
+        //console.log("asdasd", stakers[u].address);
+        var fonts = "1000" + decStr;
+        await fontToken.transfer(stakers[u].address, fonts);
+        const fontBalance = await fontToken.balanceOf(stakers[u].address);
+        await fontToken.connect(stakers[u]).approve(fontStakingContract.address, fontBalance);
+        await fontStakingContract.connect(stakers[u]).stake(fontBalance);
+        //console.log("Address :: ", stakers[u].address);
+    }
+    //console.log("called stake");
+  }
+
+  
 
   //check initial balance of both the tokens 
   describe("Font Staking", async function () {
@@ -262,16 +293,146 @@ describe("FONT Staking", function() {
         await expect(fontStakingContract.connect(addr1).editRewardToken(ptUSDA.address,1,true)).to.be.revertedWith('Denied');
     });
 
+    it("Able to exclude accounts", async function () {
+        await expect(fontStakingContract.connect(owner).excludeAccount("0x0000000000000000000000000000000000000000")).to.emit(fontStakingContract, 'accountExcluded');
+    });
+
+
+
 
   });
 
 
   describe("Reward Supply", async function () {
-    it("@todo Snapshot revert if no staking", async function () {
+
+    it("Snapshot should deny for non admin", async function () {
+        await expect(fontStakingContract.connect(addr1).takeShapshot()).to.be.revertedWith('Denied');
+    });
+
+    it("Owner able to take snapshot", async function () {    
+        await fontStakingContract.connect(owner).setTimings(100,100,1);
+        await expect(fontStakingContract.connect(owner).takeShapshot()).to.emit(fontStakingContract, 'SnapShoted');
+    });
+
+    it("Wait for second snapshot", async function () {    
+        await expect(fontStakingContract.connect(owner).takeShapshot()).to.be.revertedWith('Wait');
+        await fontStakingContract.connect(owner).setTimings(1,1,1);
+    });    
+
+    it("Shapshot should generated ", async function () { 
+        await fontStakingContract.connect(owner).setTimings(1,1,1);
+        await delay(3000);
+        
+        await expect(fontStakingContract.connect(owner).burnFont()).to.emit(fontStakingContract, 'FontBurned');
+        var fontbalance = await fontToken.balanceOf(fontStakingContract.address);
+        fontbalance = fontbalance.div("1000000000000000000");
+        //console.log("Font Balance Before Stake :: ", fontbalance.toString());
+        await stakeAll(1);
+
+        fontbalance = await fontToken.balanceOf(fontStakingContract.address);
+        fontbalance = fontbalance.div("1000000000000000000");
+        //console.log("Font Balance After Stake :: ", fontbalance.toString());
+
+
+        await delay(9000);
+
+        await expect(fontStakingContract.connect(owner).takeShapshot()).to.emit(fontStakingContract, 'SnapShoted');
+        
+        var snapshotTime = await fontStakingContract.connect(owner).getlastSnapshotTime();
+        //console.log(snapshotTime.toString());
+        var snapshotUsers = await fontStakingContract.connect(owner).getSnapShotUsers(snapshotTime);
+        //console.log(snapshotUsers);
+
+
+        var getTotalEligibleFontsForRewards = await fontStakingContract.connect(owner).getTotalEligibleFontsForRewards();
+        getTotalEligibleFontsForRewards = getTotalEligibleFontsForRewards.div("1000000000000000000");
+        console.log("Eligible fonts for Rewards :: ", getTotalEligibleFontsForRewards.toString());                
+    });
+
+    it("Able distribute rewards", async function () {        
+
+        var actingAddress = addr3;
+
+        //await fontStakingContract.connect(owner).addRewardToken(ptUSDA.address,1,true);
+        await fontStakingContract.connect(owner).addRewardToken(ptUSDB.address,1,true);
+        await fontStakingContract.connect(owner).addRewardToken(ptUSDC.address,1,true);
+        await fontStakingContract.connect(owner).addRewardToken(ptUSDD.address,1,true);
+
+        await fontStakingContract.connect(owner).setTimings(100,10,1);
+
+        //send usda to d to contract address and verify it. 
+        await ptUSDA.transfer(fontStakingContract.address, "1000000000");
+        await ptUSDB.transfer(fontStakingContract.address, "2000000000000");
+        await ptUSDC.transfer(fontStakingContract.address, "3000000000000000");
+        await ptUSDD.transfer(fontStakingContract.address, "4000000000000000000");
+
+        var paymentTokenaddresses = [
+            ptUSDA.address, 
+            ptUSDB.address, 
+            ptUSDC.address, 
+            ptUSDD.address,
+        ];
+
+        await expect(fontStakingContract.connect(owner).DistributeRewards(paymentTokenaddresses)).to.emit(fontStakingContract, 'RewardsDistributed');
+
+        var userShare = await fontStakingContract.connect(owner).getCurrentRewardShare(actingAddress.address);
+        var getTotalEligibleFontsForRewards = await fontStakingContract.connect(owner).getTotalEligibleFontsForRewards();
+        
+        userShare = userShare.div(blnbln);
+        getTotalEligibleFontsForRewards = getTotalEligibleFontsForRewards.div(blnbln);
+        var userPercentage = parseInt(userShare.toString()) / parseInt(getTotalEligibleFontsForRewards.toString());
+        console.log(userShare.toString(), getTotalEligibleFontsForRewards.toString(), userPercentage);
+
+
+
+        var asdasd = await fontStakingContract.connect(actingAddress).getUserRewardBalance(ptUSDA.address, actingAddress.address);
+        console.log("getUserRewardBalance", asdasd.toString());
+
+        var contractbalanceUSD = await ptUSDA.balanceOf(fontStakingContract.address);
+        console.log("contractbalanceUSD Before", contractbalanceUSD.toString());        
+
+        await fontStakingContract.connect(actingAddress).claimRewards(paymentTokenaddresses);
+
+        await fontStakingContract.connect(actingAddress).claimRewards(paymentTokenaddresses);
+
+        contractbalanceUSD = await ptUSDA.balanceOf(fontStakingContract.address);
+        console.log("contractbalanceUSD After", contractbalanceUSD.toString());             
+
+        var balanceUSDA = await ptUSDA.balanceOf(actingAddress.address);
+        console.log("ptUSDA", balanceUSDA.div(1000000).toString());
+        
+        balanceUSDA = await ptUSDB.balanceOf(actingAddress.address);
+        console.log("ptUSDB", balanceUSDA.div(1000000000).toString());
+        
+        balanceUSDA = await ptUSDC.balanceOf(actingAddress.address);
+        console.log("ptUSDC", balanceUSDA.div(1000000000000).toString());
+               
+        balanceUSDA = await ptUSDD.balanceOf(actingAddress.address);
+        console.log("ptUSDD", balanceUSDA.div(1000000000000000).toString());
+                
+
+        
+        var debuggered = await fontStakingContract.connect(actingAddress).debugger();
+        for(let a in debuggered) {
+            console.log("debuggered" + a, debuggered[a].toString());
+        }
+        
+
 
     });
 
-    it("@todo Snapshot should not work within intervel", async function () {
+    it("Able distribute rewards", async function () {        
+        
+
+    });
+
+
+
+    it("Able to burn font", async function () {        
+        
+        await fontToken.balanceOf(fontStakingContract.address);
+        
+        //await expect(fontStakingContract.connect(owner).takeShapshot()).to.be.revertedWith('0 stake');
 
     });    
 
