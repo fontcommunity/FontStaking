@@ -1,0 +1,160 @@
+Features: 
+    Royality
+    Multichain
+    Support of ERC1155
+
+    Take Commission and send to Staking contract 
+    Accepts multiple token 
+    Keep number of depth / histoty 
+    Auction
+    0 Commission for trading in font 
+    Commssion burn 
+    Font mining (configurable)
+    Affilate commissions 
+
+
+Structs 
+    NFTs
+    Orders 
+    Auctions
+        Bids
+    Payment Tokens 
+
+
+
+
+NFT 
+    ID 
+    creator
+    first owner in exchange
+    royality 
+
+order 
+    order id
+    nft 
+    price 
+    token 
+    owner
+    buyer 
+    orderStatus
+    Affiliate % 
+
+Auction 
+    id
+    Min price 
+    accept price 
+    accept token 
+    deadline 
+    nft 
+    owner 
+    affiliate 
+    buyer 
+
+Bids    
+    auction id 
+    price 
+    bidder 
+    status 
+
+
+
+
+
+User flow 
+    User add their NFT to our exchange 
+    Set auction or Sell
+    Auction 
+
+    sell 
+        can cancel 
+        can edit 
+
+    On sell NFT goes to new owner
+
+
+
+Royality 
+Multichain 
+fees to staking contract 
+accepts mutiple tokens (potential partnership)
+0 commision for trading in FONT (whats the value of font)
+Supports fractions trade (Respect ERC1155)
+commission burn 
+include the font mining into it exchange
+rearrage the font miining in favour of buyers in terms of volume 
+Minting is in this contract which admin adds the whitelist stuffs 
+Affliate will get % 
+Royality works only if the trade is happening in our exchange.
+
+Add role to kicker, snapshot, distributor
+
+
+
+How auction works (only for 721)
+    
+    base price 
+    accept price 
+    last time
+    duration
+
+
+        bids
+            user
+            time 
+
+
+NFT
+Sales
+Bids
+Affliate commission  
+font reward 
+
+--------------------------------------------------
+--------------------  User flow ------------------
+--------------------------------------------------
+
+create mint themselvs from the preconfigured list
+
+Self Mint 
+Move to fundraising
+Move to exchange 
+
+-------------------------------------------------------
+--------------------  Admin Settings ------------------
+-------------------------------------------------------
+payment tokens 
+Burn address
+reward address 
+Exchange Fees   
+    Maker fees 
+    Taker fees 
+Update font mining stuffs (whole table) 
+Enable font auction fest 
+Update price oracle address 
+commission fees per token 
+roles 
+
+-------------------------------------------------------
+--------------------  Payment Tokens ------------------
+-------------------------------------------------------
+USDT
+USDC
+BUSD
+DAI 
+ETH (rewards based on USD volume)
+BSC (rewards based on USD Volume )
+FONT (rewards based on USD Volume )
+
+Rewards are instant 
+
+-------------------------------------------------------===========
+--------------------  combine Order and auction ------------------
+-------------------------------------------------------===========
+
+pros 
+    low storage cost 
+    easy to switch between types with low gas 
+    less code 
+
+cons
+    tough to implement trade type specific logics but its not as complex as we think

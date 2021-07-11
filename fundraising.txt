@@ -1,0 +1,38 @@
+1% of total raise sent to staking rewards 
+
+99% goes to fund raisers 
+
+Success full fund raisers will earn some fonts? 
+
+Investors will earn font (1% worth of font distributed to investors)
+
+single contract to the specific job 
+
+after successfull fundraise, erc1155 share will be distributed to investors based on the invested ratio and listed as exclusive NFT 
+
+Create Font page in drupal 
+Create it as NFT in ERC1155 and move it to fund raising contract 
+After successfull ICO, distribute the funds to investors
+Method 1  
+    Follow ERC1155 standard to distribute the share (hard to implement)
+Methor 2 
+    Sell and distribute the profit based on share (hard in business wise )
+
+
+Better use method 2 and exit the project 
+Method 1 can be used to replicate multiple projects. 
+
+
+Settings per ICO 
+    min per head
+    max per head 
+    only Stale coins 
+    soft cap 
+    hardcap 
+    targetdate
+    nft sell price 
+    address to with draw the money 
+    milstones as array 
+
+    sstartdate
+    created by
