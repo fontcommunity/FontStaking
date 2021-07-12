@@ -13,6 +13,9 @@ Features:
     Affilate commissions 
 
 
+
+
+
 Structs 
     NFTs
     Orders 
@@ -112,12 +115,22 @@ font reward
 --------------------------------------------------
 --------------------  User flow ------------------
 --------------------------------------------------
+user move their NFTs to exchange and Set royality 
 
+create sell orders 
+
+
+
+
+
+----
 create mint themselvs from the preconfigured list
 
-Self Mint 
+Self Mint using minter 
 Move to fundraising
 Move to exchange 
+
+
 
 -------------------------------------------------------
 --------------------  Admin Settings ------------------
@@ -158,3 +171,22 @@ pros
 
 cons
     tough to implement trade type specific logics but its not as complex as we think
+
+
+-----------------------------------------------------------------
+------------------- Custodial vs non custudial ------------------
+-----------------------------------------------------------------
+
+for Custodial 
+    Too much code 
+    security 
+    
+    Low gas for most txn 
+
+For non custudial 
+    low gas for successive transaction 
+
+
+
+notes and limitations
+    You cant switch between order type 

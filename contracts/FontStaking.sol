@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+// Author: https://twitter.com/adalquardz
 
 pragma solidity ^0.8.0;
 
