@@ -11,7 +11,7 @@ Features:
     Commssion burn 
     Font mining (configurable)
     Affilate commissions 
-
+    Auto ETH to WETH
 
 
 
@@ -58,7 +58,7 @@ Bids
     price 
     bidder 
     status 
-
+    timestamp
 
 
 
@@ -146,7 +146,7 @@ Enable font auction fest
 Update price oracle address 
 commission fees per token 
 roles 
-
+Admins should able 
 -------------------------------------------------------
 --------------------  Payment Tokens ------------------
 -------------------------------------------------------
@@ -190,3 +190,18 @@ For non custudial
 
 notes and limitations
     You cant switch between order type 
+
+
+Font mining 
+
+Apply only for successfully filled orders 
+
+Set per 100$, for sellers and buyers 
+
+sellers 20% buyers 80% 
+
+
+in auction 
+sellers 20
+bidders 10
+buyers 70 
