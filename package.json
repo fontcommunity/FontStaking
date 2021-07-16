@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "hardhat-gas-reporter": "^1.0.4",
+    "hardhat-tracer": "^1.0.0-alpha.6",
     "underscore": "^1.13.1"
   }
 }

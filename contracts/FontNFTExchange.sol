@@ -58,13 +58,13 @@ contract FontNFTExchange is Context, AccessControl {
     IERC1155 FontNFT;
 
     //Role for admin
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    bytes32 private constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     //Maximum 50% royality allowed, 
     uint16 maxRoyalityAllowed; //1% = 100
 
     //ERC20 token address for payments
-    mapping (address => bool) public PaymentTokenContracts; 
+    mapping (address => bool) private PaymentTokenContracts; 
 
     struct NFT {
         uint256 nftid; //NFT ID 
@@ -74,7 +74,7 @@ contract FontNFTExchange is Context, AccessControl {
         address creatror; // Royality receiver or initial owner in this excange, no need to be original creator of this nft
         address owner; //current owner         
     }
-    mapping (uint256 => NFT) public NFTs;
+    mapping (uint256 => NFT) private NFTs;
 
     struct Order {
         uint256 nft; //NFT ID [f]
@@ -104,22 +104,22 @@ contract FontNFTExchange is Context, AccessControl {
     mapping (uint256 => Bid) private Bids;
 
     
-    mapping (address => bool) public paymentTokens;
+    mapping (address => bool) private paymentTokens;
         
     //Referral fees earned per user per token, subject to reset on claim 
-    mapping (address => mapping(address => uint256)) public ReferralFees;
+    mapping (address => mapping(address => uint256)) private ReferralFees;
     //Referral fees earned so for. just to keep the count 
     //mapping (address => mapping(address => uint256)) public ReferralFeesTotal;
     //Commission fees earned so for, subject to reset on claim
-    mapping (address => uint256) public commissionFees;
+    mapping (address => uint256) private commissionFees;
     //Commission fees earned so for, just to use in views 
     //mapping (address => uint256) public commissionFeesTotal;
 
     //Bids per auction order 
     mapping (uint256 => uint256[]) private AuctionBids;
 
-    uint256 public OrderID = 1;
-    uint256 public BidID = 1;
+    uint256 private OrderID = 1;
+    uint256 private BidID = 1;
 
 
     //Constructors
@@ -251,6 +251,7 @@ contract FontNFTExchange is Context, AccessControl {
         require(OrderBook[_order_id].seller == msg.sender, "D");
         require(NFTs[OrderBook[_order_id].nft].owner == msg.sender, "D");        
         require(OrderBook[_order_id].status == 1, "NO");
+        require(NFTs[OrderBook[_order_id].nft].status == 1, "NC");
 
         //Auction
         if(OrderBook[_order_id].orderType == 2) {
@@ -294,7 +295,7 @@ contract FontNFTExchange is Context, AccessControl {
         emit OrderCanceled(_order_id);
     }
 
-    /*
+    
 
     function orderBid(uint256 _order_id, uint256 _amount) external {
         //make sure the order is live 
@@ -310,7 +311,7 @@ contract FontNFTExchange is Context, AccessControl {
 
         
 
-        uint256 _bid_id = BidID.current();
+        uint256 _bid_id = BidID;
 
 
         Bids[_bid_id].id = _bid_id;
@@ -326,12 +327,15 @@ contract FontNFTExchange is Context, AccessControl {
         //update the order with highest bid 
         OrderBook[_order_id].highestBidID = _bid_id;
 
-        OrderID.increment();
+        _bid_id++;
+
+        OrderID = _bid_id;
 
         IERC20(OrderBook[_order_id].token).safeTransferFrom(msg.sender, address(this), _amount);
 
     }
 
+    
     function orderBidTopup(uint256 _order_id, uint256 _bid_id, uint256 _amount) external {
         //@todo remove _order_id from parameter and take it from bid id 
 
@@ -428,14 +432,15 @@ contract FontNFTExchange is Context, AccessControl {
     
         return true;
     }
-    */
+    
+    
 
     //Buy the spot order. 
     event OrderBought(uint256 _order_id);
-    function orderBuy(uint256 _order_id, address _ref) external {
+    function orderBuy(uint256 _order_id, address _ref, bool _withdraw) external {
         //allrequires 
-        require(OrderBook[_order_id].status == 1, "NO");
-        require(OrderBook[_order_id].orderType == 1, "NS");
+        require(OrderBook[_order_id].status == 1 && OrderBook[_order_id].orderType == 1, "NO");
+        //require(OrderBook[_order_id].orderType == 1, "NS");
         require(NFTs[OrderBook[_order_id].nft].status == 1, "NC"); 
 
 
@@ -447,7 +452,6 @@ contract FontNFTExchange is Context, AccessControl {
         if(_ref != 0x0000000000000000000000000000000000000000 && OrderBook[_order_id].referral > 0) {
             _referralBonus = OrderBook[_order_id].price.mul(OrderBook[_order_id].referral).div(10**4);
             ReferralFees[_ref][OrderBook[_order_id].token] = ReferralFees[_ref][OrderBook[_order_id].token].add(_referralBonus);
-            //ReferralFeesTotal[_ref][OrderBook[_order_id].token] = ReferralFeesTotal[_ref][OrderBook[_order_id].token].add(_referralBonus);
         }
 
         //Take the exchange commissions 
@@ -473,10 +477,25 @@ contract FontNFTExchange is Context, AccessControl {
         IERC20(OrderBook[_order_id].token).safeTransfer(OrderBook[_order_id].seller, finalAmount);
 
         
+        if(_withdraw) {
+            NFTs[OrderBook[_order_id].nft].status = 2;
+            FontNFT.safeTransferFrom(address(this), msg.sender, OrderBook[_order_id].nft, 0, '');            
+        }
 
         //@todo emit the event 
         emit OrderBought(_order_id);
 
+    }
+
+    event NFTWithdrawn(uint256 nft);
+    function withdrawNFT(uint256 nft) public {
+        require(NFTs[nft].status == 1, 'NC');
+        require(NFTs[nft].owner == msg.sender, 'D');
+        require(NFTs[nft].orderID == 0, 'IO');
+
+        NFTs[nft].status = 2;
+        FontNFT.safeTransferFrom(address(this), msg.sender, nft, 1, '');
+        emit NFTWithdrawn(nft);
     }
 
 

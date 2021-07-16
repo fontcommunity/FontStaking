@@ -38,7 +38,7 @@ describe("NFT EXchange", function() {
 
 
   const ZERO_BYTES32 = 0x0000000000000000000000000000000000000000000000000000000000000000;
-
+  const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 
   const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -101,7 +101,6 @@ describe("NFT EXchange", function() {
         await expect(await fontNFTTokens.connect(owner).balanceOf(addr2.address, 3)).to.equal(1);
         await expect(await fontNFTTokens.connect(owner).balanceOf(addr2.address, 4)).to.equal(1);
         await expect(await fontNFTTokens.connect(owner).balanceOf(addr2.address, 5)).to.equal(1);
-
     });    
   });
 
@@ -197,16 +196,49 @@ describe("NFT EXchange", function() {
     it("Owner should not able to edit the canceled order", async function () {
         await expect(exchange.connect(addr2).orderEdit(1, 2000*Bn, 0, 0, 250, ptUSDB.address)).to.be.revertedWith("NO");
         var anNFT = await exchange.viewNFT(2);
-        LogNFT(anNFT);
+        //LogNFT(anNFT);
 
     });        
 
     it("Able to recreate the order of canceled NFT", async function () {
         await expect(exchange.connect(addr2).orderCreate(2, 1000*Mn, 0,0, 1, 100, ptUSDA.address)).to.emit(exchange, 'OrderCreated').withArgs(2);
         var anNFT = await exchange.viewNFT(2);
-        LogNFT(anNFT);
+        //LogNFT(anNFT);
     });            
 
+    it("Able to buy the NFT by any user", async function () {
+        var anNFT = await exchange.viewNFT(2);
+        LogNFT(anNFT);
+
+        await ptUSDA.transfer(addr3.address, "100000000000");
+        await expect((await ptUSDA.connect(addr3).balanceOf(addr3.address)).toString()).to.equal("100000000000");
+        const ptUSDABalance = await ptUSDA.balanceOf(addr3.address);
+        await ptUSDA.connect(addr3).approve(exchange.address, ptUSDABalance);
+
+        var _LogOrder = await exchange.viewOrder(2);
+        LogOrder(_LogOrder);        
+
+        await expect(exchange.connect(addr3).orderBuy(2, ZERO_ADDRESS, false)).to.emit(exchange, 'OrderBought');
+        anNFT = await exchange.viewNFT(2);
+        await expect(anNFT.owner).to.equal(addr3.address);
+        await expect(anNFT.orderID.toString()).to.equal("0");
+
+        
+        var anOrder = await exchange.viewOrder(2);
+        
+        await expect(anOrder.buyer).to.equal(addr3.address);
+        await expect(anOrder.status).to.equal(2);
+
+        //Check the nft balance
+
+        await expect(exchange.connect(addr3).withdrawNFT(2)).to.emit(exchange, 'NFTWithdrawn');
+        
+        asdas = await fontNFTTokens.balanceOf(addr3.address, 2);
+        console.log(asdas.toString());
+
+        //await expect((await fontNFTTokens.balanceOf(addr3.address, 2)).toString).to.equal("2");
+
+    });
 
   });
    
@@ -221,6 +253,7 @@ function LogNFT(nft) {
     console.log("Status :: ", nft.status);    
     console.log("Creator :: ", nft.creatror);    
     console.log("Owner :: ", nft.owner);    
+    console.log();console.log();console.log();
 }
 
 function LogOrder(structr) {
@@ -236,6 +269,6 @@ function LogOrder(structr) {
     console.log("Token :: ", structr.token);
     console.log("Seller :: ", structr.seller);
     console.log("Buyer :: ", structr.buyer);
-
+    console.log();console.log();console.log();
     
 }
