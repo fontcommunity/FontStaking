@@ -21,9 +21,11 @@
     "ethereum-waffle": "^3.0.0",
     "ethers": "^5.0.0",
     "hardhat": "^2.3.0",
+    "hardhat-contract-sizer": "^2.0.3",
     "mocha": "^9.0.2"
   },
   "dependencies": {
-    "hardhat-gas-reporter": "^1.0.4"
+    "hardhat-gas-reporter": "^1.0.4",
+    "underscore": "^1.13.1"
   }
 }

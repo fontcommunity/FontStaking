@@ -1,26 +1,46 @@
 // SPDX-License-Identifier: MIT
 // Author: https://twitter.com/adalquardz
 
+/* Error Codes: This is reduce the contract size 
+/* 
+    A Already
+    D Denied
+    UL Unequal length
+    NC Not under custody
+    H High
+    R Referral is high
+    T Payment token status 
+    IO Already in Order 
+    M Minprice >= price
+    E Expiry Date
+    NO Order Not Open
+    NA Not Auction
+    NE NOt Enough
+    NB No Bids
+    NS Not a Sport Order 
+    Mm Mismatch
+    X Exist
+    NX Not Exist
+
+*/
+
 pragma solidity ^0.8.0;
 
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 
-contract OwnershipExchange is Context, AccessControl {
+contract FontNFTExchange is Context, AccessControl {
 
     using SafeMath for uint;
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
-    using Counters for Counters.Counter;
 
 
     //Constants
-    bytes4 _onERC721Received;
     bytes4 _onERC1155Received;
     bytes4 _onERC1155BatchReceived;
 
@@ -29,17 +49,19 @@ contract OwnershipExchange is Context, AccessControl {
     //Address of the contract owner, usually to have some ownership rights 
     address public ownerAddress;
 
+    address public fontERC20Address;
+
     //Settings 
-    uint256 _exchangeFees; //1% = 100
+    uint256 exchangeFees = 400; //1% = 100
 
     //FONT NFT contract 
-    IERC1155 FontNFT = IERC1155(0x15790FD4AeEd8B28a02f72787C77B1Be43a196F5);
+    IERC1155 FontNFT;
 
     //Role for admin
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     //Maximum 50% royality allowed, 
-    uint16 maxRoyalityAllowed = 5000; //1% = 100
+    uint16 maxRoyalityAllowed; //1% = 100
 
     //ERC20 token address for payments
     mapping (address => bool) public PaymentTokenContracts; 
@@ -52,10 +74,9 @@ contract OwnershipExchange is Context, AccessControl {
         address creatror; // Royality receiver or initial owner in this excange, no need to be original creator of this nft
         address owner; //current owner         
     }
-    mapping (uint256 => NFT) private NFTs;
+    mapping (uint256 => NFT) public NFTs;
 
     struct Order {
-        uint256 id; //Order id //@todo should we need it 
         uint256 nft; //NFT ID [f]
         uint256 qty; // quantity of this font nft (for now just 1) //@todo should we beed this [f]
         uint256 price; //price for whole NFT, of acceptable price if its auction [f]
@@ -82,38 +103,29 @@ contract OwnershipExchange is Context, AccessControl {
     }
     mapping (uint256 => Bid) private Bids;
 
-    struct PaymentToken { 
-        uint16 commission; //1% = 100
-        uint8 status; //1 = open, 2 is paused
-    }
-    mapping (address => PaymentToken) public paymentTokens;
+    
+    mapping (address => bool) public paymentTokens;
         
     //Referral fees earned per user per token, subject to reset on claim 
     mapping (address => mapping(address => uint256)) public ReferralFees;
     //Referral fees earned so for. just to keep the count 
-    mapping (address => mapping(address => uint256)) public ReferralFeesTotal;
+    //mapping (address => mapping(address => uint256)) public ReferralFeesTotal;
     //Commission fees earned so for, subject to reset on claim
     mapping (address => uint256) public commissionFees;
     //Commission fees earned so for, just to use in views 
-    mapping (address => uint256) public commissionFeesTotal;
+    //mapping (address => uint256) public commissionFeesTotal;
 
     //Bids per auction order 
     mapping (uint256 => uint256[]) private AuctionBids;
 
-    Counters.Counter private OrderID;
-    Counters.Counter private BidID;
+    uint256 public OrderID = 1;
+    uint256 public BidID = 1;
 
 
     //Constructors
-    constructor() {
-
-        //contract_owner = payable(_msgSender());
-        //commission_address = payable(_msgSender());
-
-
+    constructor(address _fontnft) {
 
         //Mandatory for contracts to return these strings to receive ERC1155 and ERC721
-        _onERC721Received = bytes4(keccak256("onERC721Received(address,uint256,bytes)"));
         _onERC1155Received = bytes4(keccak256("onERC1155Received(address,address,uint256,uint256,bytes)"));
         _onERC1155BatchReceived = bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"));
 
@@ -121,86 +133,55 @@ contract OwnershipExchange is Context, AccessControl {
 
         ownerAddress = msg.sender;
 
+        FontNFT = IERC1155(_fontnft);
+
+        maxRoyalityAllowed = 5000;
+
+
     }    
 
     /*************************************************************************/
     /******************************** Move NFT *******************************/
     /*************************************************************************/    
 
-    //Move single NFT from user address to Exchange contract. 
-    event NFTMovedIn(uint256, uint16);
-    function nftMoveIn(uint256 nft, uint16 royality) external {
-        require(NFTs[nft].status != 1, 'Already');
-        require(royality < maxRoyalityAllowed, 'High');
-        
-
-        NFTs[nft].status = 1;
-        NFTs[nft].owner = msg.sender;
-        NFTs[nft].orderID = 0;
-
-
-        //If moving for first time
-        if(NFTs[nft].status == 0) {
-            NFTs[nft].creatror = msg.sender;
-            NFTs[nft].royality = royality;
-        }
-        
-        FontNFT.safeTransferFrom(msg.sender, address(this), nft, 1, '');
-        emit NFTMovedIn(nft, royality);
-    }
+    
+    
 
     event NFTMovedInBulk(uint256 items);
-    function nftMoveInBulk(uint256[] calldata nfts, uint16[] calldata royalities) external {
-        require(nfts.length == royalities.length, "Unequal");
-        
-        uint256 _length = nfts.length;
+    function nftMoveInBulk(uint256[] memory nfts, uint16[] memory royalities) external {
+        require(nfts.length == royalities.length, "UL");
 
-        uint256[] memory amounts = new uint256[](_length);
+        uint256[] memory amounts = new uint256[](nfts.length);
 
         for(uint256 i = 0; i < nfts.length; i++) {
-            require(NFTs[nfts[i]].status != 1, 'Already');
+            require(NFTs[nfts[i]].status != 1, 'A'); //@todo check 
 
             amounts[i] = 1; //.push(1);
-            
+
+            //If moving for first time
+            if(NFTs[nfts[i]].status == 0) {
+                NFTs[nfts[i]].creatror = msg.sender; 
+                NFTs[nfts[i]].royality = royalities[i];
+            }        
+
             NFTs[nfts[i]].status = 1;
             NFTs[nfts[i]].owner = msg.sender;
             NFTs[nfts[i]].orderID = 0;
 
-            //If moving for first time
-            if(NFTs[nfts[i]].status == 0) {
-                NFTs[nfts[i]].creatror = msg.sender;
-                NFTs[nfts[i]].royality = royalities[i];
-            }            
+    
         }
-
         FontNFT.safeBatchTransferFrom(msg.sender, address(this), nfts, amounts, '');
-        
         NFTMovedInBulk(nfts.length);
     }
-
-    event NFTMovedOut(uint256);
-    function nftMoveOut(uint256 nft) external {
-        require(NFTs[nft].owner == msg.sender, 'Not Owner');
-        require(NFTs[nft].status == 1, 'Not under custody');
-        require(NFTs[nft].orderID == 0, 'Cancel Order');
-
-        NFTs[nft].status = 2;
-
-        FontNFT.safeTransferFrom(address(this), msg.sender, nft, 1, '');
-        emit NFTMovedOut(nft);
-    }
-
+    
     event NFTMovedOutBulk(uint256);
-    function nftMoveOutBulk(uint256[] calldata nfts) external {
+    function nftMoveOutBulk(uint256[] memory nfts) external {
+        uint256[] memory amounts = new uint256[](nfts.length);
 
-        uint256 _length = nfts.length;
-
-        uint256[] memory amounts = new uint256[](_length);
-
-        for(uint256 i = 0; i < _length; i++) {
-            require(NFTs[nfts[i]].owner == msg.sender, 'Not Owner');
-            require(NFTs[nfts[i]].status == 1, 'Not under custody');
-            require(NFTs[nfts[i]].orderID == 0, 'Cancel Order');
+        for(uint256 i = 0; i < nfts.length; i++) {
+            require(NFTs[nfts[i]].owner == msg.sender, 'D');
+            require(NFTs[nfts[i]].status == 1, 'NC');
+            require(NFTs[nfts[i]].orderID == 0, 'CO');
 
             amounts[i] = 1; //.push(1);
 
@@ -211,86 +192,98 @@ contract OwnershipExchange is Context, AccessControl {
         NFTMovedOutBulk(nfts.length);
     }
 
-    event RoyalityUpdated(uint256 nft, uint16 royality);
-    function nftUpdateRoyality(uint256 nft, uint16 royality) external {
-        require(NFTs[nft].status == 1, 'Not under custody');
-        require(NFTs[nft].owner == msg.sender, 'Not Owner');
-        require(NFTs[nft].creatror == msg.sender, 'Not Creator');
-        require(royality < maxRoyalityAllowed, 'High');
-        
-        NFTs[nft].royality = royality;
-        emit RoyalityUpdated(nft, royality);
+    event RoyalitiesUpdated(uint256 items);
+    function nftUpdateRoyalities(uint256[] calldata nfts, uint16[] calldata royalities) external {
+        require(nfts.length == royalities.length, "UL");
+
+        for(uint256 i = 0; i < nfts.length; i++) {
+            require(NFTs[nfts[i]].status == 1, 'NC');
+            require(NFTs[nfts[i]].owner == msg.sender, 'D');
+            require(NFTs[nfts[i]].creatror == msg.sender, 'D');
+            require(royalities[i] < maxRoyalityAllowed, 'H');
+            NFTs[nfts[i]].royality = royalities[i];
+        }
+        emit RoyalitiesUpdated(nfts.length);
     }
 
     /*************************************************************************/
     /******************************** exchange *******************************/
     /*************************************************************************/
-
+    
+    event OrderCreated(uint256);
     function orderCreate(uint256 nft, uint256 price, uint256 minPrice, uint256 expires, uint8 orderType, uint16 referral, address token) external {
         //check all the requires
-        require(NFTs[nft].status == 1, 'Not under custody');
-        require(NFTs[nft].owner == msg.sender, 'Not Owner');
-        require(NFTs[nft].orderID == 0, 'In Order');
-        require(paymentTokens[token].status == 1, 'Token');
-        require(referral < 9999, 'Referral');
+        require(NFTs[nft].status == 1, 'NC');
+        require(NFTs[nft].owner == msg.sender, 'D');
+        require(NFTs[nft].orderID == 0, 'IO');
+        require(paymentTokens[token], 'T');
+        require(referral < 9999, 'R');
         
-        uint256 _order_id = OrderID.current();
+        uint256 _order_id = OrderID;
 
         // Auction
         if(orderType == 2) {
-            require(expires > block.timestamp, 'Expiry Date');
-            require(minPrice < price, 'Minprice >= price');
+            require(expires > block.timestamp, 'E');
+            require(minPrice < price, 'M');
         }
 
         //Common settings for both the types 
-        OrderBook[_order_id].nft = nft;
-        OrderBook[_order_id].orderType = orderType;
-        OrderBook[_order_id].referral = referral;
-        OrderBook[_order_id].status = 1;
-        OrderBook[_order_id].highestBidID = 0;
-        OrderBook[_order_id].price = price;
-        OrderBook[_order_id].minPrice = minPrice;
-        OrderBook[_order_id].expires = expires;
-        OrderBook[_order_id].token = token;
-        OrderBook[_order_id].seller = msg.sender;
+        OrderBook[OrderID].nft = nft;
+        OrderBook[OrderID].orderType = orderType;
+        OrderBook[OrderID].referral = referral;
+        OrderBook[OrderID].status = 1;
+        OrderBook[OrderID].highestBidID = 0;
+        OrderBook[OrderID].price = price;
+        OrderBook[OrderID].minPrice = minPrice;
+        OrderBook[OrderID].expires = expires;
+        OrderBook[OrderID].token = token;
+        OrderBook[OrderID].seller = msg.sender;
 
-        NFTs[nft].orderID = _order_id;
+        NFTs[nft].orderID = OrderID;
 
-        OrderID.increment();
+        OrderID++;
 
+        emit OrderCreated(_order_id);
     }
-
+    
+    event OrderEdited(uint256 _order_id);
     function orderEdit(uint256 _order_id, uint256 price, uint256 minPrice, uint256 expires, uint16 referral, address token) external {
-        require(OrderBook[_order_id].seller == msg.sender, "Denied");
-        require(NFTs[OrderBook[_order_id].nft].owner == msg.sender, "Denied 2");        
-        require(OrderBook[_order_id].status == 1, "Not Open");
+        require(OrderBook[_order_id].seller == msg.sender, "D");
+        require(NFTs[OrderBook[_order_id].nft].owner == msg.sender, "D");        
+        require(OrderBook[_order_id].status == 1, "NO");
 
         //Auction
         if(OrderBook[_order_id].orderType == 2) {
-            require(expires > block.timestamp, 'Expiry Date');
-            require(minPrice < price, 'Minprice >= price');
+            require(expires > block.timestamp, 'E');
+            require(minPrice < price, 'M');
+        }
+        
+        if(OrderBook[_order_id].orderType == 1) {
+            OrderBook[_order_id].token = token;
         }
 
         OrderBook[_order_id].price = price;
         OrderBook[_order_id].minPrice = minPrice;
         OrderBook[_order_id].expires = expires;
         OrderBook[_order_id].referral = referral;
-        OrderBook[_order_id].token = token;
 
+        emit OrderEdited(_order_id);
     }
 
+    
+    event OrderCanceled(uint256);
     function orderCancel(uint256 _order_id) external {
-        require(OrderBook[_order_id].seller == msg.sender, "Denied");
-        require(NFTs[OrderBook[_order_id].nft].owner == msg.sender, "Denied 2");
-        require(OrderBook[_order_id].status == 1, "Not Open");
-        require(NFTs[OrderBook[_order_id].nft].status == 1, "Not in Custody");
+        require(OrderBook[_order_id].seller == msg.sender, "D");
+        require(NFTs[OrderBook[_order_id].nft].owner == msg.sender, "D");
+        require(OrderBook[_order_id].status == 1, "NO");
+        require(NFTs[OrderBook[_order_id].nft].status == 1, "NC");
         
 
 
         //Auction, cancel all the bids
         if(OrderBook[_order_id].orderType == 2) {
             //cancel all bids and refund it. 
-            orderBidsCancelAll(_order_id, 0);        
+            //orderBidsCancelAll(_order_id, 0);        
         }
         //update the order to cancled
         OrderBook[_order_id].status = 3;
@@ -298,21 +291,22 @@ contract OwnershipExchange is Context, AccessControl {
         NFTs[OrderBook[_order_id].nft].orderID = 0;
 
         //@todo emit it
+        emit OrderCanceled(_order_id);
     }
 
-    
+    /*
 
     function orderBid(uint256 _order_id, uint256 _amount) external {
         //make sure the order is live 
-        require(OrderBook[_order_id].status == 1, "Not Open");
+        require(OrderBook[_order_id].status == 1, "NO");
         //Only Auction type
-        require(OrderBook[_order_id].orderType == 2, "Not Auction");
+        require(OrderBook[_order_id].orderType == 2, "NA");
         //make sure the nft is under custody
-        require(NFTs[OrderBook[_order_id].nft].status == 1, "Not in Custody"); 
+        require(NFTs[OrderBook[_order_id].nft].status == 1, "NC"); 
         //Make sure amount is higher than base price 
-        require(OrderBook[_order_id].minPrice < _amount, "Min Price");
+        require(OrderBook[_order_id].minPrice < _amount, "M");
         //make sure amount have highest bid 
-        require(Bids[OrderBook[_order_id].highestBidID].offer < _amount, "Not enough"); 
+        require(Bids[OrderBook[_order_id].highestBidID].offer < _amount, "NE"); 
 
         
 
@@ -342,18 +336,18 @@ contract OwnershipExchange is Context, AccessControl {
         //@todo remove _order_id from parameter and take it from bid id 
 
         //make sure the order is live 
-        require(OrderBook[_order_id].status == 1, "Not Open");
+        require(OrderBook[_order_id].status == 1, "NO");
         //Only Auction type
-        require(OrderBook[_order_id].orderType == 2, "Not Auction");        
+        require(OrderBook[_order_id].orderType == 2, "NA");        
         //make sure the nft is under custody
-        require(NFTs[OrderBook[_order_id].nft].status == 1, "Not in Custody");      
+        require(NFTs[OrderBook[_order_id].nft].status == 1, "NC");      
         //make sure the bidder is the owner of the bid 
-        require(Bids[_bid_id].bidder == msg.sender, "Denied"); 
+        require(Bids[_bid_id].bidder == msg.sender, "D"); 
         //Make sure the bid belong to the offer 
-        require(Bids[_bid_id].orderID == _order_id, "Mismatch"); 
+        require(Bids[_bid_id].orderID == _order_id, "Mm"); 
 
         //old amount and new amount should be higher than highest bid
-        require((Bids[_bid_id].offer + _amount) > Bids[OrderBook[_order_id].highestBidID].offer, "Not Enough");
+        require((Bids[_bid_id].offer + _amount) > Bids[OrderBook[_order_id].highestBidID].offer, "NE");
 
         //update offer to new amount 
         Bids[_bid_id].offer = Bids[_bid_id].offer.add(_amount);
@@ -368,11 +362,11 @@ contract OwnershipExchange is Context, AccessControl {
 
     function orderBidApprove(uint256 _bid_id) external {
         //make sure the order is live 
-        require(OrderBook[Bids[_bid_id].orderID].status == 1, "Not Open");
+        require(OrderBook[Bids[_bid_id].orderID].status == 1, "NO");
         //make sure the nft is under custody
-        require(NFTs[OrderBook[Bids[_bid_id].orderID].nft].status == 1, "Not in Custody"); 
+        require(NFTs[OrderBook[Bids[_bid_id].orderID].nft].status == 1, "NC"); 
         //Make sure only seller can approve the bid 
-        require(OrderBook[Bids[_bid_id].orderID].seller == msg.sender, "Denied");
+        require(OrderBook[Bids[_bid_id].orderID].seller == msg.sender, "D");
 
         Bids[_bid_id].status = 2;
 
@@ -387,16 +381,17 @@ contract OwnershipExchange is Context, AccessControl {
         //emit the event 
 
     }
+    
 
     function orderBidCancel(uint256 _bid_id) external {
         //make sure the order is live 
-        require(OrderBook[Bids[_bid_id].orderID].status == 1, "Order Not Open");
+        require(OrderBook[Bids[_bid_id].orderID].status == 1, "No");
         //make sure the nft is under custody
-        require(NFTs[OrderBook[Bids[_bid_id].orderID].nft].status == 1, "Not in Custody"); 
+        require(NFTs[OrderBook[Bids[_bid_id].orderID].nft].status == 1, "NC"); 
         //only open bids can be cancled, other 2 bids are filled and cancled 
         require(Bids[_bid_id].status == 1, "Bid not open"); 
         //Only bid owner able to cancel it
-        require(Bids[_bid_id].bidder == msg.sender, "Denied");
+        require(Bids[_bid_id].bidder == msg.sender, "D");
         
         Bids[_bid_id].status = 3;
 
@@ -411,6 +406,21 @@ contract OwnershipExchange is Context, AccessControl {
 
     function orderBidsCancelAll(uint256 _order_id, uint256 _except) internal returns (bool){
         //@todo everything 
+        //make sure the order is live 
+        require(OrderBook[_order_id].status == 1, "No");
+        //make sure the nft is under custody
+        require(NFTs[OrderBook[_order_id].nft].status == 1, "NC"); 
+        //Only Auction type
+        require(OrderBook[_order_id].orderType == 2, "NA");
+        //check if order have enough bids 
+        require(AuctionBids[_order_id].length > 0, "NB");
+
+        for(uint256 i = 0; i < AuctionBids[_order_id].length; i++) {
+            if(Bids[AuctionBids[_order_id][i]].status == 1 && AuctionBids[_order_id][i] != _except) {
+                Bids[AuctionBids[_order_id][i]].status = 3;
+                IERC20(OrderBook[_order_id].token).safeTransfer(Bids[AuctionBids[_order_id][i]].bidder, Bids[AuctionBids[_order_id][i]].offer);
+            }
+        }
         //only for open order and open nft 
         //loop all bid ids 
         //for all bids thats not cancled, transfer the amount 
@@ -418,14 +428,15 @@ contract OwnershipExchange is Context, AccessControl {
     
         return true;
     }
+    */
 
     //Buy the spot order. 
+    event OrderBought(uint256 _order_id);
     function orderBuy(uint256 _order_id, address _ref) external {
         //allrequires 
-        require(OrderBook[_order_id].status == 1, "Not Open");
-
-        require(OrderBook[_order_id].orderType == 1, "Not Spot");
-        require(NFTs[OrderBook[_order_id].nft].status == 1, "Not in Custody"); 
+        require(OrderBook[_order_id].status == 1, "NO");
+        require(OrderBook[_order_id].orderType == 1, "NS");
+        require(NFTs[OrderBook[_order_id].nft].status == 1, "NC"); 
 
 
         //Take money from buyer 
@@ -436,13 +447,13 @@ contract OwnershipExchange is Context, AccessControl {
         if(_ref != 0x0000000000000000000000000000000000000000 && OrderBook[_order_id].referral > 0) {
             _referralBonus = OrderBook[_order_id].price.mul(OrderBook[_order_id].referral).div(10**4);
             ReferralFees[_ref][OrderBook[_order_id].token] = ReferralFees[_ref][OrderBook[_order_id].token].add(_referralBonus);
-            ReferralFeesTotal[_ref][OrderBook[_order_id].token] = ReferralFeesTotal[_ref][OrderBook[_order_id].token].add(_referralBonus);
+            //ReferralFeesTotal[_ref][OrderBook[_order_id].token] = ReferralFeesTotal[_ref][OrderBook[_order_id].token].add(_referralBonus);
         }
 
         //Take the exchange commissions 
         uint256 _commissionFees = 0;
-        if(paymentTokens[OrderBook[_order_id].token].commission > 0) {
-            _commissionFees = OrderBook[_order_id].price.mul(paymentTokens[OrderBook[_order_id].token].commission).div(10**4);
+        if(OrderBook[_order_id].token != fontERC20Address) {
+            _commissionFees = OrderBook[_order_id].price.mul(exchangeFees).div(10**4);
             commissionFees[OrderBook[_order_id].token] = commissionFees[OrderBook[_order_id].token].add(_commissionFees);            
         }        
 
@@ -464,6 +475,7 @@ contract OwnershipExchange is Context, AccessControl {
         
 
         //@todo emit the event 
+        emit OrderBought(_order_id);
 
     }
 
@@ -472,66 +484,13 @@ contract OwnershipExchange is Context, AccessControl {
     /***************************** Admin settings ****************************/
     /*************************************************************************/
 
-    event PaymentTokenAdded(address _address, uint8 _status, uint16 _commission);
-    function adminAddPaymentToken(address _address, uint8 _status, uint16 _commission) external {
-        require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
-        require(!isPaymentTokenExists(_address), "Exists");
-        paymentTokens[_address].status = _status;
-        paymentTokens[_address].commission = _commission;
-        emit PaymentTokenAdded(_address, _status, _commission);
+
+    function adminEditPaymentToken(address _address, bool _status) external {
+        require(hasRole(ADMIN_ROLE, msg.sender), "D");
+        paymentTokens[_address] = _status;         
     }
 
 
-    event PaymentTokenEdited(address _address, uint8 _status, uint16 _commission);
-    function adminEditPaymentToken(address _address, uint8 _status, uint16 _commission) external {
-        require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
-        require(isPaymentTokenExists(_address), "Not Exists");
-        paymentTokens[_address].status = _status;         
-        paymentTokens[_address].commission = _commission;
-        emit PaymentTokenEdited(_address, _status, _commission);        
-    }
-
-    function adminUpdateFeesAddress() external {
-
-    }
-
-    function adminTradeFees(uint256 _adminFee) external {
-
-    }
-
-    event AdminAdded(address _address);
-    function adminAddAdmin(address _address) external {
-        require(msg.sender == ownerAddress, "Denied");
-        grantRole(ADMIN_ROLE, _address);
-        emit AdminAdded(_address);
-    }
-
-    event AdminRemoved(address _address);
-    function adminRevokeAdmin(address _address) external {
-        require(msg.sender == ownerAddress, "Denied");
-        revokeRole(ADMIN_ROLE, _address);
-        emit AdminRemoved(_address);
-    }
-
-    function adminEditFontRewardRate(uint256 _forMakers, uint256 _forTakers) external {
-
-    }
-
-    function adminWithdrawFonts() external {
-
-    }
-
-    function adminWithdrawETH() external {
-        
-    }
-
-    function adminExcludeAddressForRewards() external {
-
-    }
-
-    function adminIncludeAddressForRewards() external {
-        
-    }    
 
     /*************************************************************************/
     /*********************************** Views *******************************/
@@ -550,11 +509,11 @@ contract OwnershipExchange is Context, AccessControl {
     }    
 
     function viewUserOrders(address _user) external view returns (uint256[] memory) {
-
+        
     }
 
-    function viewPaymentMethod(address _token) external view returns (PaymentToken memory) {
-
+    function viewPaymentMethod(address _token) external view returns (bool) {
+        return paymentTokens[_token];
     }
 
     function viewMiningRewards() external view returns (uint256, uint256) {
@@ -582,19 +541,14 @@ contract OwnershipExchange is Context, AccessControl {
     /********************************* Helpers *******************************/
     /*************************************************************************/ 
 
-    //Check if reward token already exist
-    //@done
-    function isPaymentTokenExists(address _address) internal view returns (bool) {
-        return paymentTokens[_address].status > 0;
-    }
 
     //Set the highest bid for order in order book
     //@todo test this 
     function _setOrderHighestBid(uint256 _order_id) internal {
-        require(OrderBook[_order_id].status == 1, "Not Open");
-        require(OrderBook[_order_id].orderType == 2, "Not Auction");
-        require(NFTs[OrderBook[_order_id].nft].status == 1, "Not in Custody"); 
-        require(AuctionBids[_order_id].length > 0, "No Bids"); 
+        require(OrderBook[_order_id].status == 1, "NO");
+        require(OrderBook[_order_id].orderType == 2, "NA");
+        require(NFTs[OrderBook[_order_id].nft].status == 1, "NC"); 
+        require(AuctionBids[_order_id].length > 0, "NB"); 
         
         uint256 _highestBidID = 0;
         uint256 _highestBidOffer = 0;
@@ -607,4 +561,59 @@ contract OwnershipExchange is Context, AccessControl {
         OrderBook[_order_id].highestBidID = _highestBidID;
     }
 
+    //Contract must have onERC1155Received() to receive the ERC1155 
+    //@done
+    function onERC1155Received(address operator, address from, uint256 id, uint256 value, bytes calldata data) external returns(bytes4) {
+        return _onERC1155Received;
+    }
+
+    //Contract must have to onERC1155BatchReceived() receive the ERC1155 in batch
+    //@done
+    function onERC1155BatchReceived(address operator, address from, uint256[] calldata ids, uint256[] calldata values, bytes calldata data) external returns(bytes4) {
+        return _onERC1155BatchReceived;
+    }
+
+
 }
+
+
+
+    /*
+
+    //Move single NFT from user address to Exchange contract. 
+    event NFTMovedIn(uint256, uint16);
+    function nftMoveIn(uint256 nft, uint16 royality) external {
+        require(NFTs[nft].status != 1, 'Already');
+        require(royality < maxRoyalityAllowed, 'High');
+        
+        NFTs[nft].status = 1;
+        NFTs[nft].owner = msg.sender;
+        NFTs[nft].orderID = 0;
+
+        //If moving for first time
+        if(NFTs[nft].status == 0) {
+            NFTs[nft].creatror = msg.sender;
+            NFTs[nft].royality = royality;
+        }
+        
+        FontNFT.safeTransferFrom(msg.sender, address(this), nft, 1, '');
+        emit NFTMovedIn(nft, royality);
+    }
+
+    event NFTMovedOut(uint256);
+    function nftMoveOut(uint256 nft) external {
+        require(NFTs[nft].owner == msg.sender, 'Not Owner');
+        require(NFTs[nft].status == 1, 'Not under custody');
+        require(NFTs[nft].orderID == 0, 'Cancel Order');
+
+        NFTs[nft].status = 2;
+
+        FontNFT.safeTransferFrom(address(this), msg.sender, nft, 1, '');
+        emit NFTMovedOut(nft);
+    }    
+    
+    */
+
+
+    
+    
