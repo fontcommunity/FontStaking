@@ -51,6 +51,8 @@ contract FontNFTExchange is Context, AccessControl {
 
     address public fontERC20Address;
 
+    //uint256 private auctionExpiresMaxTime = 63072000; // 2 years 
+
     //Settings 
     uint256 exchangeFees = 400; //1% = 100
 
@@ -67,7 +69,6 @@ contract FontNFTExchange is Context, AccessControl {
     mapping (address => bool) private PaymentTokenContracts; 
 
     struct NFT {
-        uint256 nftid; //NFT ID 
         uint256 orderID; //Current Order ID
         uint16 royality; //Royality %. 1% = 100
         uint8 status;//check if the NFT is under contract custudy: 0 not exists, 1 under custody, 2 went out of contract
@@ -93,12 +94,23 @@ contract FontNFTExchange is Context, AccessControl {
     }    
     mapping (uint256 => Order) private OrderBook;
 
+    struct NFTOrder {
+        uint256 nft; //NFT ID
+        uint256 price; //Price the nft 
+        uint256 minPrice; //Min price if the order is auction
+        uint256 expires; //if order is auction, its expiration time 
+        address token; //Payment token
+        uint16 royality; //royality % 
+        uint16 referral; //referral commission
+        uint8 orderType; //type of the order, spot or auction
+    }
+
     struct Bid {
-        uint256 id;
         uint256 orderID;
         uint256 offer;
-        uint256 timestamp;
+        //uint256 timestamp;
         address bidder;
+        address referral; //referral address
         uint8 status; //Order status : 1/open, 2/filled, 3/cancelled
     }
     mapping (uint256 => Bid) private Bids;
@@ -206,10 +218,103 @@ contract FontNFTExchange is Context, AccessControl {
         emit RoyalitiesUpdated(nfts.length);
     }
 
+    event BulkNFTOrderCreated(uint256); //uint256[] ids, uint256 orders
+    function nftMoveCreateBulk(NFTOrder[] calldata nftorder) external {
+        require(nftorder.length > 0, 'L');
+
+        uint256[] memory amounts = new uint256[](nftorder.length);
+        uint256[] memory nftIDs = new uint256[](nftorder.length);
+
+        //uint256 _order_id = OrderID;
+
+        for(uint256 i = 0; i < nftorder.length; i++) {
+            require(NFTs[nftorder[i].nft].status != 1, 'A'); //@todo check 
+            require(paymentTokens[nftorder[i].token], 'T');
+            amounts[i] = 1; 
+            nftIDs[i] = nftorder[i].nft;
+
+            //If moving for first time
+            if(NFTs[nftorder[i].nft].status == 0) {
+                NFTs[nftorder[i].nft].creatror = msg.sender; 
+                NFTs[nftorder[i].nft].royality = nftorder[i].royality;
+            }        
+
+            NFTs[nftorder[i].nft].status = 1;
+            NFTs[nftorder[i].nft].owner = msg.sender;
+            NFTs[nftorder[i].nft].orderID = 0;
+
+
+            //Create Order 
+            //Common settings for both the types 
+            OrderBook[OrderID].nft = nftorder[i].nft;
+            OrderBook[OrderID].orderType = nftorder[i].orderType;
+            OrderBook[OrderID].referral = nftorder[i].referral;
+            OrderBook[OrderID].status = 1;
+            OrderBook[OrderID].highestBidID = 0;
+            OrderBook[OrderID].price = nftorder[i].price;
+            OrderBook[OrderID].minPrice = nftorder[i].minPrice;
+            //OrderBook[OrderID].expires = expires;
+            OrderBook[OrderID].token = nftorder[i].token;
+            OrderBook[OrderID].seller = msg.sender;
+
+            if(nftorder[i].expires  > 0) {
+                OrderBook[OrderID].expires = nftorder[i].expires.add(block.timestamp); //@todo fix this expires thing
+            }
+            
+
+            NFTs[nftorder[i].nft].orderID = OrderID;
+
+            OrderID++;
+
+        }
+        FontNFT.safeBatchTransferFrom(msg.sender, address(this), nftIDs, amounts, '');
+
+        emit BulkNFTOrderCreated(nftorder.length);
+    }
+
+
     /*************************************************************************/
     /******************************** exchange *******************************/
     /*************************************************************************/
     
+    function orderCreateBulk(uint256[] memory nfts, uint256[] memory  price, uint256[] memory  minPrice, uint256[] memory  expires, uint8[] memory  orderType, uint16[] memory  referral, address[] memory  token) external {
+        require(nfts.length == price.length && nfts.length == minPrice.length && nfts.length == expires.length, "Mm");
+        require(nfts.length == orderType.length && nfts.length == referral.length && nfts.length == token.length, "Mm");
+       
+
+        for(uint256 i = 0; i < nfts.length; i++) {
+            require(NFTs[nfts[i]].status == 1, 'NC');
+            require(NFTs[nfts[i]].owner == msg.sender, 'D');
+            require(NFTs[nfts[i]].orderID == 0, 'IO');
+            require(paymentTokens[token[i]], 'T');
+            require(referral[i] < 9999, 'R');
+
+            if(orderType[i] == 2) {
+                //require(expires > block.timestamp, 'E');
+                require(minPrice[i] < price[i] && minPrice[i] > 0, 'M');
+            }
+
+            //Common settings for both the types 
+            OrderBook[OrderID].nft = nfts[i];
+            OrderBook[OrderID].orderType = orderType[i];
+            OrderBook[OrderID].referral = referral[i];
+            OrderBook[OrderID].status = 1;
+            OrderBook[OrderID].highestBidID = 0;
+            OrderBook[OrderID].price = price[i];
+            OrderBook[OrderID].minPrice = minPrice[i];
+            //OrderBook[OrderID].expires = expires;
+            OrderBook[OrderID].token = token[i];
+            OrderBook[OrderID].seller = msg.sender;
+            if(expires[i]  > 0) {
+                OrderBook[OrderID].expires = expires[i].add(block.timestamp); //@todo fix this expires thing
+            }
+            NFTs[nfts[i]].orderID = OrderID;
+            OrderID++;
+        }
+
+        emit OrderCreated(nfts.length);
+    }
+
     event OrderCreated(uint256);
     function orderCreate(uint256 nft, uint256 price, uint256 minPrice, uint256 expires, uint8 orderType, uint16 referral, address token) external {
         //check all the requires
@@ -223,8 +328,8 @@ contract FontNFTExchange is Context, AccessControl {
 
         // Auction
         if(orderType == 2) {
-            require(expires > block.timestamp, 'E');
-            require(minPrice < price, 'M');
+            //require(expires > block.timestamp, 'E');
+            require(minPrice < price && minPrice > 0, 'M');
         }
 
         //Common settings for both the types 
@@ -235,9 +340,14 @@ contract FontNFTExchange is Context, AccessControl {
         OrderBook[OrderID].highestBidID = 0;
         OrderBook[OrderID].price = price;
         OrderBook[OrderID].minPrice = minPrice;
-        OrderBook[OrderID].expires = expires;
+        //OrderBook[OrderID].expires = expires;
         OrderBook[OrderID].token = token;
         OrderBook[OrderID].seller = msg.sender;
+
+        if(expires  > 0) {
+            OrderBook[OrderID].expires = expires.add(block.timestamp); //@todo fix this expires thing
+        }
+        
 
         NFTs[nft].orderID = OrderID;
 
@@ -255,8 +365,8 @@ contract FontNFTExchange is Context, AccessControl {
 
         //Auction
         if(OrderBook[_order_id].orderType == 2) {
-            require(expires > block.timestamp, 'E');
-            require(minPrice < price, 'M');
+            require(expires > 0, 'E');
+            require(minPrice < price && minPrice > 0, 'M');
         }
         
         if(OrderBook[_order_id].orderType == 1) {
@@ -265,9 +375,12 @@ contract FontNFTExchange is Context, AccessControl {
 
         OrderBook[_order_id].price = price;
         OrderBook[_order_id].minPrice = minPrice;
-        OrderBook[_order_id].expires = expires;
+        //OrderBook[_order_id].expires = expires;
         OrderBook[_order_id].referral = referral;
 
+        if(expires  > 0) {
+            expires = expires.add(block.timestamp);
+        }        
         emit OrderEdited(_order_id);
     }
 
@@ -278,13 +391,11 @@ contract FontNFTExchange is Context, AccessControl {
         require(NFTs[OrderBook[_order_id].nft].owner == msg.sender, "D");
         require(OrderBook[_order_id].status == 1, "NO");
         require(NFTs[OrderBook[_order_id].nft].status == 1, "NC");
-        
-
 
         //Auction, cancel all the bids
         if(OrderBook[_order_id].orderType == 2) {
             //cancel all bids and refund it. 
-            //orderBidsCancelAll(_order_id, 0);        
+            orderBidsCancelAll(_order_id, 0);        
         }
         //update the order to cancled
         OrderBook[_order_id].status = 3;
@@ -296,8 +407,8 @@ contract FontNFTExchange is Context, AccessControl {
     }
 
     
-
-    function orderBid(uint256 _order_id, uint256 _amount) external {
+    event BidOrder(uint256 _order_id, uint256 _amount, uint256 _bid_id);
+    function orderBid(uint256 _order_id, uint256 _amount, address _ref) external {
         //make sure the order is live 
         require(OrderBook[_order_id].status == 1, "NO");
         //Only Auction type
@@ -309,33 +420,36 @@ contract FontNFTExchange is Context, AccessControl {
         //make sure amount have highest bid 
         require(Bids[OrderBook[_order_id].highestBidID].offer < _amount, "NE"); 
 
-        
 
-        uint256 _bid_id = BidID;
-
-
-        Bids[_bid_id].id = _bid_id;
-        Bids[_bid_id].orderID = _order_id;
-        Bids[_bid_id].bidder = msg.sender;
-        Bids[_bid_id].timestamp = block.timestamp;
-        Bids[_bid_id].offer = _amount;
-        Bids[_bid_id].status = 1;
+        Bids[BidID].orderID = _order_id;
+        Bids[BidID].bidder = msg.sender;
+        //Bids[BidID].timestamp = block.timestamp;
+        Bids[BidID].offer = _amount;
+        Bids[BidID].status = 1;
 
         //push the bid id to order id
-        AuctionBids[_order_id].push(_bid_id);
+        AuctionBids[_order_id].push(BidID);
 
         //update the order with highest bid 
-        OrderBook[_order_id].highestBidID = _bid_id;
+        OrderBook[_order_id].highestBidID = BidID;
 
-        _bid_id++;
+        //referral link
+        if(_ref != 0x0000000000000000000000000000000000000000 && OrderBook[_order_id].referral > 0) {
+            Bids[BidID].referral = _ref;
+        }
 
-        OrderID = _bid_id;
+        
+
+        BidID++;
+
 
         IERC20(OrderBook[_order_id].token).safeTransferFrom(msg.sender, address(this), _amount);
 
+        emit BidOrder(_order_id, _amount, BidID - 1);
+
     }
 
-    
+    event BidTopuped(uint256, uint256, uint256);
     function orderBidTopup(uint256 _order_id, uint256 _bid_id, uint256 _amount) external {
         //@todo remove _order_id from parameter and take it from bid id 
 
@@ -361,23 +475,43 @@ contract FontNFTExchange is Context, AccessControl {
 
         IERC20(OrderBook[_order_id].token).safeTransferFrom(msg.sender, address(this), _amount);
 
+        emit BidTopuped(_order_id, _bid_id, _amount);
         //@todo emit 
     }
 
-    function orderBidApprove(uint256 _bid_id) external {
+    function orderBidApprove(uint256 _bid_id, bool withdrawNFT) external {
         //make sure the order is live 
         require(OrderBook[Bids[_bid_id].orderID].status == 1, "NO");
         //make sure the nft is under custody
         require(NFTs[OrderBook[Bids[_bid_id].orderID].nft].status == 1, "NC"); 
         //Make sure only seller can approve the bid 
         require(OrderBook[Bids[_bid_id].orderID].seller == msg.sender, "D");
+        //Only Auction type
+        require(OrderBook[Bids[_bid_id].orderID].orderType == 2, "NA");                
 
+        //update the bid 
         Bids[_bid_id].status = 2;
 
         //cancel all other bids 
+        orderBidsCancelAll(Bids[_bid_id].orderID, _bid_id);
+
         //take the commission and referral balances 
+        uint256 _commission = _calculateFee(Bids[_bid_id].offer, OrderBook[Bids[_bid_id].orderID].token);
+
+        uint256 _referral_commision = 0;
+
+        if(Bids[_bid_id].referral != 0x0000000000000000000000000000000000000000 && OrderBook[Bids[_bid_id].orderID].referral > 0) {
+            _referral_commision = Bids[_bid_id].offer.mul(OrderBook[Bids[_bid_id].orderID].referral).div(10**4);
+        }
+
         //send money to seller 
+        IERC20(OrderBook[Bids[_bid_id].orderID].token).safeTransfer(OrderBook[_order_id].seller, (Bids[_bid_id].offer).sub(_commission).sub(_referral_commision));
+        
         //move nft to buyer 
+        if(withdrawNFT) {
+            
+        }
+
         //update the NFT 
         //update the order 
         //update the bid 
@@ -386,14 +520,14 @@ contract FontNFTExchange is Context, AccessControl {
 
     }
     
-
+    event BidCanceled(uint256);
     function orderBidCancel(uint256 _bid_id) external {
         //make sure the order is live 
         require(OrderBook[Bids[_bid_id].orderID].status == 1, "No");
         //make sure the nft is under custody
         require(NFTs[OrderBook[Bids[_bid_id].orderID].nft].status == 1, "NC"); 
         //only open bids can be cancled, other 2 bids are filled and cancled 
-        require(Bids[_bid_id].status == 1, "Bid not open"); 
+        require(Bids[_bid_id].status == 1, "BN"); 
         //Only bid owner able to cancel it
         require(Bids[_bid_id].bidder == msg.sender, "D");
         
@@ -405,7 +539,7 @@ contract FontNFTExchange is Context, AccessControl {
         _setOrderHighestBid(Bids[_bid_id].orderID);
 
         //@todo emit
-        
+        emit BidCanceled(_bid_id);
     }
 
     function orderBidsCancelAll(uint256 _order_id, uint256 _except) internal returns (bool){
@@ -425,10 +559,6 @@ contract FontNFTExchange is Context, AccessControl {
                 IERC20(OrderBook[_order_id].token).safeTransfer(Bids[AuctionBids[_order_id][i]].bidder, Bids[AuctionBids[_order_id][i]].offer);
             }
         }
-        //only for open order and open nft 
-        //loop all bid ids 
-        //for all bids thats not cancled, transfer the amount 
-            //if expect id is present, dont cancel it 
     
         return true;
     }
@@ -479,7 +609,7 @@ contract FontNFTExchange is Context, AccessControl {
         
         if(_withdraw) {
             NFTs[OrderBook[_order_id].nft].status = 2;
-            FontNFT.safeTransferFrom(address(this), msg.sender, OrderBook[_order_id].nft, 0, '');            
+            FontNFT.safeTransferFrom(address(this), msg.sender, OrderBook[_order_id].nft, 1, '');            
         }
 
         //@todo emit the event 
@@ -574,10 +704,18 @@ contract FontNFTExchange is Context, AccessControl {
         for(uint256 i = 0; i < AuctionBids[_order_id].length; i++) {
             if(Bids[AuctionBids[_order_id][i]].status == 1 && Bids[AuctionBids[_order_id][i]].offer > _highestBidOffer) {
                 _highestBidOffer = Bids[AuctionBids[_order_id][i]].offer;
-                _highestBidID = Bids[AuctionBids[_order_id][i]].id;
+                _highestBidID = AuctionBids[_order_id][i];
             }
         }
         OrderBook[_order_id].highestBidID = _highestBidID;
+    }
+
+    //done
+    function _calculateFee(uint256 _amount, address _token) internal view returns (uint256) {
+        if(_token == fontERC20Address) {
+            return 0;
+        }
+        return _amount.mul(exchangeFees).div(10**4);
     }
 
     //Contract must have onERC1155Received() to receive the ERC1155 

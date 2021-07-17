@@ -119,7 +119,7 @@ user move their NFTs to exchange and Set royality
 
 create sell orders 
 
-
+Merge the move and create order in sinlge contract call (bulk)
 
 
 
