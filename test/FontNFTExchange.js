@@ -154,11 +154,11 @@ describe("NFT EXchange", function() {
     //await fontNFTTokens.connect(owner).mint(addr1.address, 1, 1, ZERO_BYTES32);
 
     it("Create an Order", async function () {
-        await expect(exchange.connect(addr2).orderCreate(2, 1000*Mn, 0,0, 1, 100, ptUSDA.address)).to.emit(exchange, 'OrderCreated');
+        await expect(exchange.connect(addr2).orderCreate(2, 1000*Mn, 0,0, false, 100, ptUSDA.address)).to.emit(exchange, 'OrderCreated');
     });
 
     it("Should not create same Order again", async function () {
-        await expect(exchange.connect(addr2).orderCreate(2, 1000*Mn, 0,0, 1, 100, ptUSDA.address)).to.be.revertedWith("IO")
+        await expect(exchange.connect(addr2).orderCreate(2, 1000*Mn, 0,0, false, 100, ptUSDA.address)).to.be.revertedWith("IO")
     });    
 
     it("Able to view an order", async function () {
@@ -203,7 +203,7 @@ describe("NFT EXchange", function() {
     });        
 
     it("Able to recreate the order of canceled NFT", async function () {
-        await expect(exchange.connect(addr2).orderCreate(2, 1000*Mn, 0,0, 1, 100, ptUSDA.address)).to.emit(exchange, 'OrderCreated').withArgs(2);
+        await expect(exchange.connect(addr2).orderCreate(2, 1000*Mn, 0,0, false, 100, ptUSDA.address)).to.emit(exchange, 'OrderCreated').withArgs(2);
         var anNFT = await exchange.viewNFT(2);
         //LogNFT(anNFT);
     });            
@@ -238,18 +238,10 @@ describe("NFT EXchange", function() {
 
     });
 
-    it("Able to create bulk Orders and Move in NFT in single txn using nftMoveCreateBulk", async function () {
-        var NewNFTs = _.range(23,34);
-        var bulknftorders = NFTOrderData(23,33, ptUSDA.address);
-        var _gamounts = Array.from({length:NewNFTs.length}).map(x => 1);
 
-        await fontNFTTokens.connect(owner).mintBatch(addr3.address, NewNFTs, _gamounts, ZERO_BYTES32);
-        await fontNFTTokens.connect(addr3).setApprovalForAll(exchange.address, true);
-        await expect(exchange.connect(addr3).nftMoveCreateBulk(bulknftorders)).to.emit(exchange, 'BulkNFTOrderCreated');
-    });    
-
+    
     it("Able to create Order in bulk using orderCreateBulk", async function () {
-        var _nfts = _.range(43,47);
+        var _nfts = _.range(43,54);
         var _gamounts = Array.from({length:_nfts.length}).map(x => 1);
         var _prices = Array.from({length:_nfts.length}).map(x => 100*Mn);
         var _minPrices = Array.from({length:_nfts.length}).map(x => 23*Mn);
@@ -270,45 +262,43 @@ describe("NFT EXchange", function() {
     it("Able to create Auction Order", async function () {
         await fontNFTTokens.connect(addr3).setApprovalForAll(exchange.address, true);
         await expect(exchange.connect(addr3).nftMoveInBulk([2],[1])).to.emit(exchange, 'NFTMovedInBulk');
-        await expect(exchange.connect(addr3).orderCreate(2, 45*Mn, 12*Mn,300, 2, 100, ptUSDA.address)).to.emit(exchange, 'OrderCreated');
+        await expect(exchange.connect(addr3).orderCreate(2, 45*Mn, 12*Mn,300, true, 100, ptUSDA.address)).to.emit(exchange, 'OrderCreated');
 
         var anNFT = await exchange.viewNFT(2);
         //LogNFT(anNFT);                
 
         var anOrder = await exchange.viewOrder(anNFT.orderID.toString());
-        //LogOrder(anOrder);        
+        LogOrder(anOrder);        
         
         await expect(anOrder.status.toString()).to.equal("1");
-        await expect(anOrder.orderType.toString()).to.equal("2");
+        await expect(anOrder.auction).to.equal(true);
     });
 
 
     it("User wont able to bid below min price", async function () {
         await ptUSDA.transfer(addr1.address, 100*Mn);
         await ptUSDA.connect(addr1).approve(exchange.address, 100*Mn*Mn);
-        await expect(exchange.connect(addr3).orderBid(18, 12*Mn, ZERO_ADDRESS)).to.be.revertedWith("M");
+        await expect(exchange.connect(addr3).orderBid(14, 12*Mn, ZERO_ADDRESS)).to.be.revertedWith("M");
     });
 
     it("User able to bid above min price", async function () {
-        await expect(exchange.connect(addr3).orderBid(18, (12*Mn + 1), ZERO_ADDRESS)).to.emit(exchange, 'BidOrder');
+        await expect(exchange.connect(addr3).orderBid(14, (12*Mn + 1), ZERO_ADDRESS)).to.emit(exchange, 'BidOrder');
 
         var anNFT = await exchange.viewNFT(2);
         //LogNFT(anNFT);                
-
         var anOrder = await exchange.viewOrder(anNFT.orderID.toString());
         //LogOrder(anOrder); 
-
     });    
 
     it("User able to topup above the current bid price", async function () {
-        await expect(exchange.connect(addr3).orderBidTopup(18, 1, 1000)).to.emit(exchange, 'BidTopuped');
+        await expect(exchange.connect(addr3).orderBidTopup(14, 1, 1000)).to.emit(exchange, 'BidTopuped');
     });    
 
     it("User should not able to bid below the highest offer", async function () {
         await ptUSDA.transfer(addr4.address, 100*Mn);
         await ptUSDA.connect(addr4).approve(exchange.address, 100*Mn*Mn);
-        await expect(exchange.connect(addr4).orderBid(18, (12*Mn)+100, ZERO_ADDRESS)).to.be.revertedWith("NE");
-        var anOrder = await exchange.viewOrder(18); 
+        await expect(exchange.connect(addr4).orderBid(14, (12*Mn)+100, ZERO_ADDRESS)).to.be.revertedWith("NE");
+        var anOrder = await exchange.viewOrder(14); 
         //LogOrder(anOrder); 
 
         var aBid = await exchange.viewBid(1); 
@@ -317,10 +307,10 @@ describe("NFT EXchange", function() {
     });
 
     it("User should able to bid above the highest offer", async function () {
-        await expect(exchange.connect(addr4).orderBid(18, (12*Mn)+100000, ZERO_ADDRESS)).to.emit(exchange, "BidOrder");
+        await expect(exchange.connect(addr4).orderBid(14, (12*Mn)+100000, ZERO_ADDRESS)).to.emit(exchange, "BidOrder");
         var aBid = await exchange.viewBid(2); 
         //LogBid(aBid);        
-        var anOrder = await exchange.viewOrder(18); 
+        var anOrder = await exchange.viewOrder(14); 
         //LogOrder(anOrder); 
     });
 
@@ -328,25 +318,25 @@ describe("NFT EXchange", function() {
         await expect(exchange.connect(addr2).orderBidCancel(2)).to.be.revertedWith("D");
         var aBid = await exchange.viewBid(2); 
         //LogBid(aBid);        
-        var anOrder = await exchange.viewOrder(18); 
+        var anOrder = await exchange.viewOrder(14); 
         //LogOrder(anOrder); 
     });
 
     it("User should able to cancel his own bid", async function () {
         await expect(exchange.connect(addr4).orderBidCancel(2)).to.emit(exchange, "BidCanceled");
         var aBid = await exchange.viewBid(2); 
-        LogBid(aBid);        
-        var anOrder = await exchange.viewOrder(18); 
-        LogOrder(anOrder); 
+        //LogBid(aBid);        
+        var anOrder = await exchange.viewOrder(14); 
+        //LogOrder(anOrder); 
     });
 
 
     it("User should not able to cancel bid that already cancled", async function () {
         await expect(exchange.connect(addr4).orderBidCancel(2)).to.be.revertedWith("BN");
         var aBid = await exchange.viewBid(2); 
-        LogBid(aBid);        
-        var anOrder = await exchange.viewOrder(18); 
-        LogOrder(anOrder); 
+        //LogBid(aBid);        
+        var anOrder = await exchange.viewOrder(14); 
+        //LogOrder(anOrder); 
     });
 
 
@@ -366,7 +356,7 @@ function NFTOrderData(start, end, address) {
             address,
             200 + (i*10), //royality
             100 + (i*10), //referral
-            1, //orderType
+            false, //orderType
         ];
         output.push(_tmp);
     }
@@ -395,13 +385,13 @@ function LogBid(_Bid) {
 
 function LogOrder(structr) {
     console.log("NFT :: ", structr.nft.toString());
-    console.log("Qty :: ", structr.qty.toString());
+    //console.log("Qty :: ", structr.qty.toString());
     console.log("Price :: ", structr.price.toString());
     console.log("minPrice :: ", structr.minPrice.toString());
     console.log("HighestBidID :: ", structr.highestBidID.toString());
     console.log("Expires :: ", structr.expires.toString());
     console.log("Status :: ", structr.status);
-    console.log("OrderType :: ", structr.orderType);
+    console.log("Auction? :: ", structr.auction);
     console.log("Referral :: ", structr.referral);
     console.log("Token :: ", structr.token);
     console.log("Seller :: ", structr.seller);
