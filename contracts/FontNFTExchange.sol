@@ -10,6 +10,10 @@ import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 
+interface FontRewardOracle {
+    function getFontRewardPrice(address _token) external view returns (uint256);
+}
+
 contract FontNFTExchange is Context, AccessControl {
 
     using SafeERC20 for IERC20;
@@ -23,6 +27,9 @@ contract FontNFTExchange is Context, AccessControl {
     address private feesDistributionAddress;
     //Address of the contract owner, usually to have some ownership rights 
     address private ownerAddress;
+
+    //Price oracle address
+    FontRewardOracle private priceOracle;
 
     //font ERC20 Address
     address private fontERC20Address = 0x4C25Bdf026Ea05F32713F00f73Ca55857Fbf6342; //@deploy change this per network 
@@ -110,6 +117,9 @@ contract FontNFTExchange is Context, AccessControl {
     //Bids per auction order 
     mapping (uint256 => uint256[]) private AuctionBids;
 
+    //Orders per user
+    mapping (address => uint256[]) private UserOrders;
+
     uint256 private OrderID = 1;
     uint256 private BidID = 1;
 
@@ -126,6 +136,8 @@ contract FontNFTExchange is Context, AccessControl {
         ownerAddress = msg.sender;
 
         FontNFT = IERC1155(_fontnft);
+
+        priceOracle = FontRewardOracle(_fontnft); //@deploy the right one
 
     }    
 
@@ -222,6 +234,8 @@ contract FontNFTExchange is Context, AccessControl {
             OrderBook[OrderID].seller = msg.sender;
 
             NFTs[nfts[i]].orderID = OrderID;
+            //User Orders
+            UserOrders[msg.sender].push(OrderID);
             OrderID++;
         }
         emit OrderCreated(nfts.length);
@@ -262,6 +276,9 @@ contract FontNFTExchange is Context, AccessControl {
         OrderBook[OrderID].seller = msg.sender;
 
         NFTs[nft].orderID = OrderID;
+
+        UserOrders[msg.sender].push(OrderID);
+
         OrderID++;
         emit OrderCreated(_order_id);
     }
@@ -383,7 +400,7 @@ contract FontNFTExchange is Context, AccessControl {
     }
 
     event OrderBidApproved(uint256 _bid_id);
-    function orderBidApprove(uint256 _bid_id, bool withdrawNFT) external {
+    function orderBidApprove(uint256 _bid_id, bool _withdrawNFT) external {
         //make sure the order is live 
         require(OrderBook[Bids[_bid_id].orderID].status == 1, "NO");
         //make sure the nft is under custody
@@ -408,7 +425,7 @@ contract FontNFTExchange is Context, AccessControl {
         NFTs[OrderBook[Bids[_bid_id].orderID].nft].orderID = 0; //set the NFT is not locked in order 
 
         //move nft to buyer 
-        if(withdrawNFT) {
+        if(_withdrawNFT) {
             NFTs[OrderBook[Bids[_bid_id].orderID].nft].status = 2;
             FontNFT.safeTransferFrom(address(this), Bids[_bid_id].bidder, OrderBook[Bids[_bid_id].orderID].nft, 1, '');            
         }
@@ -518,6 +535,16 @@ contract FontNFTExchange is Context, AccessControl {
         emit NFTWithdrawn(nft);
     }
 
+    //Anyone can call this price oracle and update price of any asset
+    event OraclePriceUpdated(address, uint256);
+    function updateOraclePrice(address _token) external {
+        uint256 _amount = priceOracle.getFontRewardPrice(_token);
+        if(_amount > 0) {
+            FontRewardPerToken[_token] = _amount;
+        }
+        emit OraclePriceUpdated(_token, _amount);
+    }
+
 
     /*************************************************************************/
     /***************************** Admin settings ****************************/
@@ -537,12 +564,13 @@ contract FontNFTExchange is Context, AccessControl {
         IERC20(_token).safeTransfer(feesDistributionAddress, _amount);
     }
 
-    function adminSettings(uint16 _maxRoyalityAllowed, uint256 _exchangeFees, address _feesDistributionAddress) external {
+    function adminSettings(uint16 _maxRoyalityAllowed, uint256 _exchangeFees, address _feesDistributionAddress, address _priceOracle) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "D");
         require(_maxRoyalityAllowed < 5000, "H");
         exchangeFees = _exchangeFees;
         feesDistributionAddress = _feesDistributionAddress;
         maxRoyalityAllowed = _maxRoyalityAllowed;
+        priceOracle = FontRewardOracle(_priceOracle);
     }
 
     //@deploy: set all the price per token
@@ -568,7 +596,11 @@ contract FontNFTExchange is Context, AccessControl {
     }    
 
     function viewUserOrders(address _user) external view returns (uint256[] memory) {
-        
+        return UserOrders[_user];
+    }
+
+    function viewOrderBids(uint256 _order_id) external view returns (uint256[] memory) {
+        return AuctionBids[_order_id];
     }
 
     function viewPaymentMethod(address _token) external view returns (bool) {
@@ -578,7 +610,6 @@ contract FontNFTExchange is Context, AccessControl {
     function viewFontRewards(address _user) external view returns (uint256) {
         return FontRewards[_user];
     }
-
     
     function viewEarnings(address _user, address _token) external view returns (uint256) {
         return ReferralFees[_user][_token];

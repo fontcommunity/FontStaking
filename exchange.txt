@@ -160,8 +160,11 @@ FONT (rewards based on USD Volume )
 Rewards are instant 
 
 -------------------------------------------------------===========
---------------------  combine Order and auction ------------------
+--------------------  Deploy ------------------------------------+
 -------------------------------------------------------===========
+Oracle service
+All initilizations 
+
 
 
 
@@ -196,27 +199,6 @@ buyers 70
 -----------------------------------------------------------------
 
 Pendings 
-
-Font rewards (reward%, volume, seller)
-    4% of volume will be font reward
-        example 
-            font is 4$ 
-            25 font = 100$ 25 * 4 / 10**18 * 4 
-    each payment token will have USD equalent volume on each buy 
-    font reward added to variable which can be claim by user 
-
-
-    ( Volume * Price in USD / Decimal ) * 
-
-
-    volume in USD = Volume in token / Token price per $
-
-Font rewards settings 
-* Withdraw font rewards
-* withdraw exchange fees 
-* withdraw affiliate commmissions
-font rewards for bidding 
-
 views
     commissions affiliate
     my orders 
@@ -224,21 +206,8 @@ views
 
 
 
-Oracle 
+Oracle for font reward
     1) call by admin set font per tokens ex 4 * 10**18 FONT for 100 * 10**6 => fonts = 4 * 10**10 per usd
-        4 FONT for 100$ 
-        4 * 10**18 FONT / 100 * 10**6 USDT  
-        4 * 10**10 per token 
-        ---
-        4 * 10**18 FONT / 100 * 10**18 DAI
-
-        100 * 10**6 USDT  / 4 * 10**18 FONT
-        25 * 10**6 USDT  /  10**18
-        25 / 10**12
-
-        USDT 25*10**6 / font
-        DAI 25*10**18 / font 
-
-
-
+        amount / fontrewardpertoken[token] = fonts 
     2) Any one can call a function that update price oracle
+
