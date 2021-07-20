@@ -44,7 +44,8 @@ describe("Font Fundraising", function() {
 
   const delay = ms => new Promise(res => setTimeout(res, ms));
 
-
+  let ProjectData;
+  let UTCTimestamp;
 
   //Deploy the token 
   before(async function () {
@@ -70,7 +71,7 @@ describe("Font Fundraising", function() {
     ptUSDB = await PaymentTokenA.deploy("USDB", "USDB", 9);
     ptUSDC = await PaymentTokenA.deploy("USDC", "USDC", 12);
     ptUSDD = await PaymentTokenA.deploy("USDD", "USDD", 18);     
-    fundraising = await FundraisingContract.deploy();
+    fundraising = await FundraisingContract.deploy(fontToken.address);
 
     console.log("FONT Token Deployed at ::", fontToken.address);
     console.log("Payment Token A Deployed at ::", ptUSDA.address);
@@ -84,6 +85,27 @@ describe("Font Fundraising", function() {
 
     console.log();console.log();console.log();console.log();
 
+    UTCTimestamp = Math.floor((new Date()).getTime() / 1000);
+    ProjectData = [
+        1000*Mn, //sc
+        2000*Mn, //hc
+        0, //raised
+        0, //released
+        0,//lastReleased date
+        UTCTimestamp + 100000, //datestart
+        604800, //duration
+        10*Mn, //max
+        1*Mn, //min
+        1,
+        10000,
+        0,
+        ptUSDA.address,
+        addr1.address,
+        true,
+        'b45165ed3cd437b9ffad02a2aad22a4ddc69162470e2622982889ce5826f6e3d'
+    ];    
+
+
   });
 
 
@@ -94,71 +116,98 @@ describe("Font Fundraising", function() {
 
 
     it("Create A Project", async function () {
-
-        var Milestones = [
-            [10,20,0],
-            [20,20,0],
-            [30,20,0],
-            [40,20,0],
-            [50,20,0]
-        ];
-        /*
-        struct Project {
-            uint256 softcap;
-            uint256 hardcap;
-            uint256 raised; //Amount raised so for 
-            uint256 released; //Amount released so for
-            uint256 dateStart;
-            uint256 duration;
-            uint256 maxContrib;
-            uint256 nftID; //ID of the NFT s
-            uint16 milestone; // % of release per month 1% = 100, max 10000
-            uint8 status; //0 = draft, 1 = started and in progress, 2 = filled, 3 = closed...
-            address payment; // any erc20 token 
-            address owner;
-            bool disinvesment; 
-            
-        }
-    
-*/
-        var Project = [
-            1000*Mn,
-            2000*Mn,
-            0,
-            0,
-            0,
-            604800,
-            10*Mn, 
-            1,
-            10000,
-            0,
-            addr1.address,
-            addr1.address,
-            true,
-
-        ];
-        await expect(await fundraising.connect(addr1).projectCreate(Project, "b45165ed3cd437b9ffad02a2aad22a4ddc69162470e2622982889ce5826f6e3d")).to.emit(fundraising, "ProjectCreated");
-
-        //await expect(await fundraising.connect(addr1).projectCreate2(1000*Mn, 2000*Mn, 604800, 0, 10*Mn, 1, ptUSDA.address, true, 1000,"b45165ed3cd437b9ffad02a2aad22a4ddc69162470e2622982889ce5826f6e3d")).to.emit(fundraising, "ProjectCreated");
+        await expect(await fundraising.connect(addr1).projectCreate(ProjectData)).to.emit(fundraising, "ProjectCreated");
+        var Project_ = await fundraising.connect(addr1).viewProject(1);
+        //LogProject(Project_);
     });
 
-    it("View Project 2", async function () {
-        var Project1 = await fundraising.connect(addr1).viewProject(1);
-        //var Project2 = await fundraising.connect(addr1).viewProject(2);
-        console.log(Project1, Project1.dateStart.toString());
+    it("Edit A Project", async function () {
+        var ProjectDataEdited = ProjectData;
+        ProjectDataEdited[14] = "c45165ed3cd437b9ffad02a2aad22a4ddc69162470e2622982889ce5826f6e3d";
+        await expect(await fundraising.connect(addr1).projectEdit(1, ProjectDataEdited)).to.emit(fundraising, "ProjectEdited");
+        var Project_ = await fundraising.connect(addr1).viewProject(1);
+        //LogProject(Project_);        
+    });
+
+
+    it("Start A Project", async function () {
+        await fontToken.connect(owner).transfer(addr1.address, 1000000);
+        const fontBalance = await fontToken.balanceOf(addr1.address);
+        await fontToken.connect(addr1).approve(fundraising.address, fontBalance);
+
+        await expect(await fundraising.connect(addr1).projectStart(1, UTCTimestamp + 20000, 123)).to.emit(fundraising, "ProjectStarted");
+
+        var Boost = await fundraising.connect(addr1).viewProjectBoost(1);
+    });
+
+    it("Anyone able to boost the project", async function () {
+        var Boost = await fundraising.connect(addr1).viewProjectBoost(1);   
+        //console.log("Before :: ", Boost.toString());
+        await fontToken.connect(owner).transfer(addr2.address, 1000000);
+        const fontBalance = await fontToken.balanceOf(addr2.address);
+        await fontToken.connect(addr2).approve(fundraising.address, fontBalance);
+        await expect(await fundraising.connect(addr1).projectBoost(1, 1232)).to.emit(fundraising, "ProjectBoosted");
+
+        Boost = await fundraising.connect(addr1).viewProjectBoost(1);   
+        //console.log("After :: ", Boost.toString());
+
+    });
+
+    it("Others should not able to cancel the project", async function () {
+        await expect(fundraising.connect(addr2).projectCancel(1)).to.be.revertedWith('D');//.be.reverted;//With("D");
+    });   
+
+    it("Owner or Admin should able to cancel the project", async function () {
+        //await expect(fundraising.connect(addr1).projectCancel(1)).to.emit(fundraising, 'ProjectCanceled');
+    });
+
+    it("Admin should able to cancel the project", async function () {
+        //await expect(fundraising.connect(owner).projectCancel(1)).to.emit(fundraising, 'ProjectCanceled');
     });    
   });
 
+  describe("Invest", async function () {
+    
+    it("Should not able to invest more than MAX amount", async function () {
+        await ptUSDA.connect(owner).transfer(addr2.address, 1000000*Mn);
+        const USDABalance = await ptUSDA.balanceOf(addr2.address);
+        await ptUSDA.connect(addr2).approve(fundraising.address, USDABalance);
+        await expect(fundraising.connect(addr2).invest(1, 100*Mn)).to.be.revertedWith("Max");//(fundraising, "ProjectBoosted");
+    });
+
+    it("Should not able to invest less than MIN amount", async function () {
+        await expect(fundraising.connect(addr2).invest(1, 1)).to.be.revertedWith("Min");//(fundraising, "ProjectBoosted");
+    });    
+
+    it("Should able to invest", async function () {
+        await expect(fundraising.connect(addr2).invest(1, 2*Mn)).to.emit(fundraising, "Invested");//(fundraising, "ProjectBoosted");
+    });      
+    
+  });
 
 });
 
 function LogProject(project) {
     //console.log("Qty :: ", nft.qty.toString());
-    console.log("Order ID :: ", nft.orderID.toString());
-    console.log("Royality :: ", nft.royality);    
-    console.log("Status :: ", nft.status);    
-    console.log("Creator :: ", nft.creatror);    
-    console.log("Owner :: ", nft.owner);    
+    console.log("Softcap :: ", project.softcap.toString());
+    console.log("hardcap :: ", project.hardcap.toString());
+    console.log("raised :: ", project.raised.toString());
+    console.log("released :: ", project.released.toString());
+    console.log("dateStart :: ", project.dateStart.toString());
+    console.log("lastReleased :: ", project.lastReleased.toString());
+    
+    console.log("duration :: ", project.duration.toString());
+    console.log("maxContrib :: ", project.maxContrib.toString());
+    console.log("minContrib :: ", project.minContrib.toString());
+    console.log("nftID :: ", project.nftID.toString());
+
+    console.log("milestone :: ", project.milestone);
+    console.log("status :: ", project.status);
+    console.log("payment :: ", project.payment);
+    console.log("owner :: ", project.owner);
+    console.log("disinvesment :: ", project.disinvesment);
+    console.log("IPFS :: ", project.ipfs);
+    
     console.log();console.log();console.log();
 }
 
@@ -209,3 +258,23 @@ function LogOrder(structr) {
     console.log();console.log();console.log();
     
 }
+
+        /*
+        struct Project {
+        uint256 softcap;
+        uint256 hardcap;
+        uint256 raised; //Amount raised so for 
+        uint256 released; //Amount released so for
+        uint256 dateStart; //Date is absloute date
+        uint256 duration;
+        uint256 maxContrib;
+        uint256 minContrib; //min contribution
+        uint256 nftID; //ID of the NFT s
+        uint16 milestone; // % of release per month 1% = 100, max 10000
+        uint8 status; //0 = draft, 1 = started and in progress, 2 = filled, 3 = closed...
+        address payment; // any erc20 token 
+        address owner;
+        bool disinvesment; 
+            
+        }
+        */
