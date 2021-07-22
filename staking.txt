@@ -1,0 +1,76 @@
+Font staking 
+
+Fixed time. 
+Tax on early withdrawal 
+Reward for 30+ days 
+based on % of stake 
+All ERC split expect FONT 
+
+Backdoor to and pausable 
+
+Burn the tax 
+WETH from ETH 
+
+
+Full end to end Testing 
+
+Add mininum balance to withdrawal
+
+
+What if people witdraw tokens by one ERC after one 
+
+
+make it claimable 
+
+----------------- Test Cases ----------------
+stake
+unstake
+getStakeByID
+pauseStaking
+unpauseStaking
+setTaxFees
+setMinStakeRequired
+kickStake
+excludeAccount
+includeAccount
+NewRewardToken
+EditRewardToken
+burnFont
+withdrawErc20
+makeAdmin
+revokeAdmin
+getStakeByUser
+getStakeidsByUser
+getCurrentRewardShare
+isRewardTokenExists
+calculateTax
+takeShapshot
+DistributeRewards
+claimRewards
+
+
+Need test font, 
+    test erc20s 
+    payment erc20s 
+    addresses 
+    limited time schedule 
+
+
+
+
+====================================================================================================================================
+=========================================================  Fees ====================================================================
+====================================================================================================================================
+Tax 
+
+2% to stakers 
+2% to burn 
+
+
+====================================================================================================================================
+=========================================================  Font License contract ===================================================
+====================================================================================================================================
+
+4% of the license value will be rewarded as token to buyers. 
+
+able to do universal license 

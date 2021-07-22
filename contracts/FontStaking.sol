@@ -24,9 +24,9 @@ contract FontStaking is AccessControl {
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
-    address ownerAddress;
+    address ownerAddress; //Main admin of this contract
 
-    uint256 taxFee = 100; // 1 = 0.01%
+    uint256 taxFee = 400; // 1 = 0.01% for premature unstake
     address font_token_address = 0x4C25Bdf026Ea05F32713F00f73Ca55857Fbf6342; //token address of the font
     uint256 public maxSnapshotLifetime = 14400; //Max Time(in seconds) intervel for snapshot. 4 hours by default
     uint256 public minSnapshotInterval = 3600;
@@ -62,8 +62,12 @@ contract FontStaking is AccessControl {
         //address token; //ERC20 token for rewards
         bool status; //current status or this erc token
     }
-    mapping (address => RewardToken) public rewardTokens;
+    mapping (address => uint256) public rewardTokens;
     
+        struct TT {
+            address a;
+            bool b;
+        }    
 
     //Staking info
     struct stakingInfo {
@@ -74,10 +78,7 @@ contract FontStaking is AccessControl {
         address user;
         bool claimed;
     }
-    mapping(uint256 => stakingInfo) public StakeMap; 
-
-    //stake ID to user 
-    mapping(uint256 => address) public stakeIdtoUser;
+    mapping(uint256 => stakingInfo) private StakeMap; 
 
 
     //users stake ids 
@@ -93,7 +94,7 @@ contract FontStaking is AccessControl {
 
 
     constructor(address _font_token_address)  {
-        stakeCounter = 0;
+        stakeCounter = 1;
         FONT_ERC20 = IERC20(_font_token_address); 
         ownerAddress = msg.sender;
         stakingPaused = false;
@@ -109,10 +110,9 @@ contract FontStaking is AccessControl {
     */
     function stake(uint256 _amount) public {
         require(!stakingPaused, 'Paused');
-        require(_amount > minStakeAmount, 'Minimum required');
-        require(_amount > 0, 'No Amount');
+        require(_amount > minStakeAmount, 'Minimum');
 
-        uint256 _stake_id = stakeCounter.add(1);
+        uint256 _stake_id = stakeCounter;
 
         //Add total token staked per address
         usersStake[msg.sender] = usersStake[msg.sender].add(_amount);
@@ -125,15 +125,14 @@ contract FontStaking is AccessControl {
         StakeMap[_stake_id].duration = minStakeTime;
         StakeMap[_stake_id].user = msg.sender;
         
-        //Stake to user id 
-        stakeIdtoUser[_stake_id] = msg.sender;
         //stake ids per user
         userStakeIds[msg.sender].push(_stake_id);
 
-        stakeCounter = _stake_id;
-
         //Total font currently staked
         totalStaked = totalStaked.add(_amount);
+
+        //Update Stake Counter 
+        stakeCounter++;
         
         //safe transfer from 
         FONT_ERC20.safeTransferFrom(msg.sender, address(this), _amount);
@@ -147,30 +146,28 @@ contract FontStaking is AccessControl {
     function unStake(uint256 _stake_id) external {
         require(StakeMap[_stake_id].user == msg.sender, 'Denied');
         require(!StakeMap[_stake_id].claimed, 'Claimed');
-        require(usersStake[msg.sender] > 0, 'No user balance');
-        require(totalStaked > 0, 'No FONT Balance');
-        require(StakeMap[_stake_id].amount > 0, 'No Stake Amount');
+        require(usersStake[msg.sender] > 0, 'No balance');
 
         uint256 _amount = StakeMap[_stake_id].amount; //@todo no need this variable
         uint256 _taxfee = 0;
 
         //Take tax for premeture unstake
         if((StakeMap[_stake_id].lockedTime + StakeMap[_stake_id].duration) > block.timestamp) {
-            _taxfee = calculateTax(_amount); 
+            _taxfee = _amount.mul(taxFee).div(10**4);
             //Add tax amount to total tax    
-            totalTaxAmount = totalTaxAmount.add(_taxfee);
+            totalTaxAmount += _taxfee;// totalTaxAmount.add(_taxfee);
         }
         
         //Reduce the balance per user
-        usersStake[msg.sender] = usersStake[msg.sender].sub(_amount);
+        //usersStake[msg.sender] = usersStake[msg.sender].sub(_amount);
+        usersStake[msg.sender] -= _amount;// usersStake[msg.sender].sub(_amount);
         
         //Update stake info 
         StakeMap[_stake_id].claimed = true;
         StakeMap[_stake_id].unstakeTime = block.timestamp;
         
         //Total font currently staked
-        totalStaked = totalStaked.sub(_amount);      
-
+        totalStaked -= _amount; //totalStaked.sub(_amount);      
 
         //Transfer token to user @todo safetransfer
         FONT_ERC20.safeTransfer(msg.sender, (_amount.sub(_taxfee)));
@@ -209,6 +206,7 @@ contract FontStaking is AccessControl {
     event changedTaxFee(uint256);
     function setTaxFees(uint256 _fees) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
+        require(_fees > 0, "0");
         taxFee = _fees;
         emit changedTaxFee(_fees);
     }
@@ -232,16 +230,17 @@ contract FontStaking is AccessControl {
         require(totalStaked > 0, 'No FONT Balance');
         
         //Reduce the balance per user
-        usersStake[StakeMap[_stake_id].user] = usersStake[StakeMap[_stake_id].user].sub(StakeMap[_stake_id].amount);
+        usersStake[StakeMap[_stake_id].user] -= StakeMap[_stake_id].amount;
+        //usersStake[StakeMap[_stake_id].user].sub(StakeMap[_stake_id].amount);
         
         //Update stake info 
         StakeMap[_stake_id].claimed = true;
         StakeMap[_stake_id].unstakeTime = block.timestamp;
         
         //Total font currently staked
-        totalStaked = totalStaked.sub(StakeMap[_stake_id].amount);      
+        totalStaked -= StakeMap[_stake_id].amount;// totalStaked.sub(StakeMap[_stake_id].amount);      
 
-        //Transfer token to user @todo safetransfer
+        //safetransfer token to user 
         FONT_ERC20.safeTransfer(StakeMap[_stake_id].user, StakeMap[_stake_id].amount);
 
         emit KickedStake(_stake_id);
@@ -272,32 +271,14 @@ contract FontStaking is AccessControl {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
         firstUnclaimedStakeId = _id;
     }
-    
 
-    //Add new play token for games  
+    //Edit existing reward token
     //@done
-    event NewRewardToken(address _address, uint256 _minBalance, bool _status);
-    function addRewardToken(address _address, uint256 _minBalance, bool _status) external {
+    event EditRewardToken(address _address, uint256 _minBalance);
+    function editRewardToken(address _address, uint256 _minBalance) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
-        require(!isRewardTokenExists(_address), "Exists");
-        require(_minBalance > 0, 'Min Balance');
-
-        rewardTokens[_address].status = _status;
-        rewardTokens[_address].minBalance = _minBalance;
-
-        // emit
-        emit NewRewardToken(_address, _minBalance, _status);
-    }  
-
-    //Edit existing play token
-    //@done
-    event EditRewardToken(address _address, uint256 _minBalance, bool _status);
-    function editRewardToken(address _address, uint256 _minBalance, bool _status) external {
-        require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
-        require(isRewardTokenExists(_address), "Not Exists");
-        rewardTokens[_address].status = _status;         
-        rewardTokens[_address].minBalance = _minBalance;
-        emit EditRewardToken(_address, _minBalance, _status);        
+        rewardTokens[_address] = _minBalance;
+        emit EditRewardToken(_address, _minBalance);        
     }        
 
     //Burn the tax, let anyone call it. 
@@ -383,19 +364,9 @@ contract FontStaking is AccessControl {
     /************************************************   Helpers  **********************************************/
     /**********************************************************************************************************/
 
-    //Check if reward token already exist
-    //@done
-    function isRewardTokenExists(address _address) internal view returns (bool) {
-        return rewardTokens[_address].minBalance > 0;
-    }
-
     //calculate tax fee
     //@done
     function calculateTax(uint256 _amount) internal view returns (uint256) {
-        //if no tax fee then there is no tax
-        if(taxFee == 0) {
-            return 0;
-        }
         return _amount.mul(taxFee).div(10**4);
     }
 
@@ -404,27 +375,35 @@ contract FontStaking is AccessControl {
     /**********************************************************************************************************/
     //Take snapshot of reward eligibility
     event SnapShoted(uint256, uint256);
-    function takeShapshot() external {
+    function takeSnapshot() external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
+
+        uint256 _blockTimestamp = block.timestamp;
+
         //requires //do not call often or abuse it and to avoid calling 
         //require((block.timestamp - lastSnapshotTime) > lastSnapshotTime, 'Wait'); //@todo, check this, this will never work
-        require(lastSnapshotTime < (block.timestamp - minSnapshotInterval), "Wait");
-        require(lastSnapshotTime != block.timestamp, "Already");
+        require(lastSnapshotTime < (_blockTimestamp - minSnapshotInterval), "Wait");
+        require(lastSnapshotTime != _blockTimestamp, "Already");
         uint256 _totalEligibleFontsForRewards = 0;
         
-        for(uint256 i = 0; i <= stakeCounter; i++) {
-            
+
+        for(uint256 i = 1; i < stakeCounter; i++) {
+            stakingInfo memory _StakeMap = StakeMap[i];
             //check if user is not already claimed, have crosed the date, and account is not excluded to get rewards
-            if(!StakeMap[i].claimed && (StakeMap[i].lockedTime + StakeMap[i].duration < block.timestamp) && !excludedAccount[StakeMap[i].user]) {
+            if(!_StakeMap.claimed && (_StakeMap.lockedTime + _StakeMap.duration < _blockTimestamp)) {
                 //calculate the total eligible fonts for staking rewards 
-                _totalEligibleFontsForRewards = _totalEligibleFontsForRewards.add(StakeMap[i].amount);
+                _totalEligibleFontsForRewards += _StakeMap.amount;
                 //add eligible number of tokens per user address
-                SnapShot[block.timestamp][StakeMap[i].user] = SnapShot[block.timestamp][StakeMap[i].user].add(StakeMap[i].amount);
-                SnapShotUsers[block.timestamp].push(StakeMap[i].user);
+                if(SnapShot[_blockTimestamp][_StakeMap.user] == 0) {
+                    SnapShotUsers[_blockTimestamp].push(_StakeMap.user);
+                }
+                SnapShot[_blockTimestamp][_StakeMap.user] += _StakeMap.amount;
+                //
             }
         }
+
         //update the metadatas 
-        lastSnapshotTime = block.timestamp;
+        lastSnapshotTime = _blockTimestamp;
         totalEligibleFontsForRewards = _totalEligibleFontsForRewards;
         emit SnapShoted(lastSnapshotTime, totalEligibleFontsForRewards);
     }
@@ -443,16 +422,20 @@ contract FontStaking is AccessControl {
         //uint256 _rewardAmount = 0;
         uint256 _token_balance = 0;
         address __address;
+        uint256 _totalEligibleFontsForRewards = totalEligibleFontsForRewards;
+        uint256 _min_token_balance = 0;
+        address[] memory _SnapShotUsers = SnapShotUsers[lastSnapshotTime];
+
+        mapping (address => uint256) storage _SnapShot = SnapShot[lastSnapshotTime];
 
         for(uint256 i = 0; i < _tokens.length; i++ ) {
-            if(rewardTokens[_tokens[i]].status) {
+            _min_token_balance = rewardTokens[_tokens[i]];
+            if(_min_token_balance > 0) {
                 _token_balance = IERC20(_tokens[i]).balanceOf(address(this));
-                if(_token_balance >= rewardTokens[_tokens[i]].minBalance) { 
-                    for(uint256 _user = 0; _user < SnapShotUsers[lastSnapshotTime].length; _user++) { 
-                        __address = SnapShotUsers[lastSnapshotTime][_user];
-                        //if(SnapShot[lastSnapshotTime][__address] > 0) {
-                            UserRewardBalance[__address][_tokens[i]] = UserRewardBalance[__address][_tokens[i]].add(SnapShot[lastSnapshotTime][__address].mul(_token_balance).div(totalEligibleFontsForRewards));
-                        //} //check if user in this snapshot have enough balance                         
+                if(_token_balance >= _min_token_balance) { 
+                    for(uint256 _user = 0; _user < _SnapShotUsers.length; _user++) { 
+                        __address = _SnapShotUsers[_user];
+                        UserRewardBalance[__address][_tokens[i]] += (_SnapShot[__address].mul(_token_balance).div(_totalEligibleFontsForRewards));
                     } //take all the users in current snapshop
                 }
             } //check if reward token is enabled and its not font token 
