@@ -35,14 +35,15 @@ contract FontNFTMinter is AccessControl {
     IFontNFT FontNFT;
 
     struct NFT {
-        address creator; //Real creator of this font. 
-        //uint32 chainID; //chain ID this font resides 
         bool status; //Status of this font 0 = not minter, 1 = minted 
-        uint256 qty; //reserverd default 1
+        uint16 creator; //Real creator of this font. 
+        uint32 qty; //reserverd default 1
     }
     mapping(uint256 => NFT) public NFTs;
 
-    mapping(address => uint24) private AddressUserID;
+    mapping(uint16 => address) private AddressUserID;
+
+
 
     uint32 chainID = 1;
 
@@ -60,9 +61,41 @@ contract FontNFTMinter is AccessControl {
     /************************************ Admin ********************************/
     /***************************************************************************/     
 
+    event UserAdded(address, uint16);
+    function mapAddUser(address _address, uint16 _uid) external {
+        require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
+        require(AddressUserID[_uid] == address(0), 'Exist');
+        require(_uid > 0, '0');
+
+        AddressUserID[_uid] = _address;
+        emit UserAdded(_address, _uid);
+    }
+
+    event UserAddedBulk(uint256);
+    function mapAddUserBulk(address[] calldata _address, uint16[] calldata _uid) external {
+        require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
+        require(_address.length == _uid.length, "Mismatch");
+
+        for(uint16 i = 0; i < _address.length; i++) {
+            require(AddressUserID[_uid[i]] == address(0), 'Exist');
+            AddressUserID[_uid[i]] = _address[i];
+        }
+        emit UserAddedBulk(_address.length);
+    }
+
+    event UserEdited(address, uint16);
+    function mapEditUser(address _address, uint16 _uid) external {
+        require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
+        require(AddressUserID[_uid] != address(0), 'Not Exist');
+        require(_uid > 0, 'UID');
+
+        AddressUserID[_uid] = _address;
+        emit UserEdited(_address, _uid);
+    }
+
 
     event Mapped(uint256 _nft_id);
-    function mapNFT(uint256 _nft_id, address creator, bool status, uint256 qty) external {
+    function mapNFT(uint256 _nft_id, uint16 creator, bool status, uint32 qty) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
         require(NFTs[_nft_id].qty == 0, "Exist");
         require(qty > 0, "Qty");
@@ -76,56 +109,30 @@ contract FontNFTMinter is AccessControl {
     }
 
     event MappedBulk(uint256);
-    function mapNFTBulk(uint256[] calldata _nft_ids, address[] calldata _creators, bool[] calldata _status, uint256[] calldata _qtys) external {
-        require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
-
-        require(_nft_ids.length == _creators.length && _creators.length == _status.length, "Mismatch");
-        require(_status.length == _qtys.length && _qtys.length > 0, "Mismatch");
-        
-        for(uint256 i = 0; i < _nft_ids.length; i++) {
-            require(NFTs[_nft_ids[i]].qty == 0, "Exist");
-            require(_qtys[i] > 0, "Qty");
-            require(_nft_ids[i] > 0, "Qty");
-
-            NFTs[_nft_ids[i]].creator = _creators[i];
-            //NFTs[_nft_ids[i]].chainID = _chainIDs[i];
-            NFTs[_nft_ids[i]].status = _status[i];
-            NFTs[_nft_ids[i]].qty = _qtys[i];            
-        }
-        
-        emit MappedBulk(_nft_ids.length);
-
-    }
-
-
-
     function mapNFTBulkStruct(uint256[] calldata _nft_ids, NFT[] calldata _nfts) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
-
         require(_nft_ids.length == _nfts.length && _nft_ids.length > 0);
         
-        
-        for(uint256 i = 0; i < _nft_ids.length; i++) {
+        for(uint16 i = 0; i < _nft_ids.length; i++) {
             require(NFTs[_nft_ids[i]].qty == 0, "Exist");
             require(_nfts[i].qty > 0, "Qty");
-            require(_nft_ids[i] > 0, "Qty");
+            require(_nft_ids[i] > 0, "0");
 
             NFTs[_nft_ids[i]].creator = _nfts[i].creator;
-            //NFTs[_nft_ids[i]].chainID = _nfts[i].chainID;
             NFTs[_nft_ids[i]].status = _nfts[i].status;
             NFTs[_nft_ids[i]].qty = _nfts[i].qty;
         }
         
         emit MappedBulk(_nft_ids.length);
-
     }
 
-    event MappedBulkPerUser(address, uint256);
-    function mapNFTBulkPerUser(uint256[] memory _nft_ids, address creator) external {
+    event MappedBulkPerUser(uint16, uint256);
+    function mapNFTBulkPerUser(uint256[] memory _nft_ids, uint16 creator) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
         require(_nft_ids.length > 0, "length");
+        require(creator > 0, "UID");
         
-        for(uint256 i = 0; i < _nft_ids.length; i++) {
+        for(uint16 i = 0; i < _nft_ids.length; i++) {
             require(NFTs[_nft_ids[i]].qty == 0, "Exist");
             require(_nft_ids[i] > 0, '0');
 
@@ -133,7 +140,6 @@ contract FontNFTMinter is AccessControl {
             NFTs[_nft_ids[i]].status = false; //Set status to unminted
             NFTs[_nft_ids[i]].qty = 1; //Set qty 
         }
-
         emit MappedBulkPerUser(creator, _nft_ids.length);
     }
 
@@ -145,7 +151,6 @@ contract FontNFTMinter is AccessControl {
         require(NFTs[_nft_id].qty > 0, "Not Exist");
 
         NFTs[_nft_id].creator = nft.creator;
-        //NFTs[_nft_id].chainID = nft.chainID; 
         NFTs[_nft_id].status = nft.status; 
         NFTs[_nft_id].qty = nft.qty; 
 
@@ -185,12 +190,11 @@ contract FontNFTMinter is AccessControl {
     function mintNFT(uint256 _nft_id) external {
         require(!paused, "Paused");
         require(NFTs[_nft_id].qty > 0, "Not Exist");
-        require(!NFTs[_nft_id].status, "Already Minted");
-        //require(NFTs[_nft_id].chainID == chainID, "Wrong Chain");
-        require(NFTs[_nft_id].creator == msg.sender, "Denied");
+        require(!NFTs[_nft_id].status, "Already");
+        require(AddressUserID[NFTs[_nft_id].creator] == msg.sender, "Denied");
 
-        //change the data 
-        NFTs[_nft_id].status = true; //Minted
+        //change the data to minted
+        NFTs[_nft_id].status = true; 
 
         //mint the nft 
         FontNFT.mint(msg.sender, _nft_id, NFTs[_nft_id].qty, '');
@@ -208,18 +212,15 @@ contract FontNFTMinter is AccessControl {
         
         for(uint256 i = 0; i < _nft_ids.length; i++) {
             require(NFTs[_nft_ids[i]].qty > 0, "Not Exist");
-            require(!NFTs[_nft_ids[i]].status, "Already Minted");
-            //require(NFTs[_nft_ids[i]].chainID == chainID, "Wrong Chain");
-            require(NFTs[_nft_ids[i]].creator == msg.sender, "Denied");
+            require(!NFTs[_nft_ids[i]].status, "Already");
+            require(AddressUserID[NFTs[_nft_ids[i]].creator] == msg.sender, "Denied");
 
             //Gather the amounts 
             amounts[i] = NFTs[_nft_ids[i]].qty; 
 
-            //change the status
-            NFTs[_nft_ids[i]].status = true; //Minted
-
+            //change the status to minted
+            NFTs[_nft_ids[i]].status = true; 
         }
-        
         FontNFT.mintBatch(msg.sender, _nft_ids, amounts, '');
         emit NFTMintedBulk(_nft_ids.length, msg.sender);
     }
@@ -233,6 +234,10 @@ contract FontNFTMinter is AccessControl {
     //View NFT 
     function viewNFT(uint256 nft_id) external view returns (NFT memory) {
         return NFTs[nft_id];
+    }
+
+    function viewUser(uint16 _uid) external view returns (address) {
+        return AddressUserID[_uid];
     }
 
     /***************************************************************************/
