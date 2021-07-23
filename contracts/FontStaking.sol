@@ -314,9 +314,9 @@ contract FontStaking is AccessControl {
     event TimingsChanged(uint256, uint256, uint256);
     function setTimings(uint256 _maxSnapshotLifetime, uint256 _minSnapshotInterval, uint256 _minStakeTime) external {
         require(msg.sender == ownerAddress, "Denied");
-        maxSnapshotLifetime = _maxSnapshotLifetime; 
-        minSnapshotInterval = _minSnapshotInterval;
-        minStakeTime = _minStakeTime; 
+        maxSnapshotLifetime = _maxSnapshotLifetime; //3 days default
+        minSnapshotInterval = _minSnapshotInterval; //90 days defualt 
+        minStakeTime = _minStakeTime; //90 days default 
         emit TimingsChanged(_maxSnapshotLifetime, _minSnapshotInterval, _minStakeTime);
     }
 
