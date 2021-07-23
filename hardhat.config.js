@@ -7,6 +7,7 @@ require("@nomiclabs/hardhat-waffle");
 require("hardhat-gas-reporter");
 require('hardhat-contract-sizer');
 require("hardhat-tracer");
+require("@nomiclabs/hardhat-ganache");
 
   
 module.exports = {

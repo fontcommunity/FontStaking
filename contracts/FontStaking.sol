@@ -28,9 +28,9 @@ contract FontStaking is AccessControl {
 
     uint256 taxFee = 400; // 1 = 0.01% for premature unstake
     address font_token_address = 0x4C25Bdf026Ea05F32713F00f73Ca55857Fbf6342; //token address of the font
-    uint256 public maxSnapshotLifetime = 14400; //Max Time(in seconds) intervel for snapshot. 4 hours by default
-    uint256 public minSnapshotInterval = 3600;
-    uint256 public minStakeTime = 2592000; //30 days in second
+    uint256 public maxSnapshotLifetime = 259200; // 3 days Max freshness of snapshot before reward distribution
+    uint256 public minSnapshotInterval = 7776000; //3 months this is used for both snapshot and reward distribution
+    uint256 public minStakeTime = 7776000; //90 days in second
     uint256 public minStakeAmount = 500 * (10**18); // Minimum eligible fonts for staking 
     
     
@@ -373,24 +373,21 @@ contract FontStaking is AccessControl {
     /**********************************************************************************************************/
     /************************************************  Rewards  **********************************************/
     /**********************************************************************************************************/
-    //Take snapshot of reward eligibility
+    //Take snapshot of reward eligibility>
+    //Should able to take min of 3 months 
     event SnapShoted(uint256, uint256);
     function takeSnapshot() external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
 
         uint256 _blockTimestamp = block.timestamp;
-
-        //requires //do not call often or abuse it and to avoid calling 
-        //require((block.timestamp - lastSnapshotTime) > lastSnapshotTime, 'Wait'); //@todo, check this, this will never work
-        require(lastSnapshotTime < (_blockTimestamp - minSnapshotInterval), "Wait");
-        require(lastSnapshotTime != _blockTimestamp, "Already");
+        require(lastSnapshotTime < (_blockTimestamp - minSnapshotInterval), "Wait"); //@done
         uint256 _totalEligibleFontsForRewards = 0;
         
 
-        for(uint256 i = 1; i < stakeCounter; i++) {
+        for(uint256 i = firstUnclaimedStakeId; i < stakeCounter; i++) {
             stakingInfo memory _StakeMap = StakeMap[i];
             //check if user is not already claimed, have crosed the date, and account is not excluded to get rewards
-            if(!_StakeMap.claimed && (_StakeMap.lockedTime + _StakeMap.duration < _blockTimestamp)) {
+            if(!_StakeMap.claimed && (_StakeMap.lockedTime + _StakeMap.duration < _blockTimestamp)) { //@done date
                 //calculate the total eligible fonts for staking rewards 
                 _totalEligibleFontsForRewards += _StakeMap.amount;
                 //add eligible number of tokens per user address
@@ -412,10 +409,13 @@ contract FontStaking is AccessControl {
     event RewardsDistributed(uint256, uint256);
     function DistributeRewards(address[] memory _tokens) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
+
+        uint256 _blockTimestamp = block.timestamp;
+
         //should be called AFTER x days (30 days ) from last withdrawals
-        require(lastRewardTime < (block.timestamp - minStakeTime), 'wait'); //done        
+        require(lastRewardTime < (_blockTimestamp - minSnapshotInterval), 'wait'); //@done        
         //should have snapshotred before x mins (4 hours?)
-        require(lastSnapshotTime > (block.timestamp - maxSnapshotLifetime), 'SnapShot'); //Done 
+        require(lastSnapshotTime > (_blockTimestamp - maxSnapshotLifetime), 'SnapShot'); //@done 
         //make sure there is enough staking from last snapshot
         require(totalEligibleFontsForRewards > 0, '0 stake'); //@done
         
@@ -443,7 +443,7 @@ contract FontStaking is AccessControl {
         } // Main for loop
 
         //update the needed metadata 
-        lastRewardTime = block.timestamp;
+        lastRewardTime = _blockTimestamp;
 
         //emit 
         emit RewardsDistributed(_tokens.length, SnapShotUsers[lastSnapshotTime].length);
