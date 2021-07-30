@@ -580,7 +580,7 @@ contract FontNFTExchange is Context, AccessControl {
         _distributePayment(OrderBook[_order_id].price, OrderBook[_order_id].referral, OrderBook[_order_id].token, _ref,  OrderBook[_order_id].seller, _withdraw);
 
 
-        //@todo emit the event 
+        //emit the event 
         emit OrderBought(_order_id);
     }
 
