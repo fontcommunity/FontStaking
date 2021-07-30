@@ -25,7 +25,7 @@ contract FontNFTExchange is Context, AccessControl {
 
     //Address to distribute the Exchange fees, usually staking contract 
     address private feesDistributionAddress;
-    //Address of the contract owner, usually to have some ownership rights 
+    //Address of the contract owner
     address private ownerAddress;
 
     //Price oracle address
@@ -59,7 +59,7 @@ contract FontNFTExchange is Context, AccessControl {
         uint256 orderID; //Current Order ID
         uint16 royality; //Royality %. 1% = 100
         uint8 status;//check if the NFT is under contract custudy: 0 not exists, 1 under custody, 2 went out of contract
-        address creatror; // Royality receiver or initial owner in this excange, no need to be original creator of this nft
+        address creator; // Royality receiver or initial owner in this excange, no need to be original creator of this nft
         address owner; //current owner         
     }
     mapping (uint256 => NFT) private NFTs;
@@ -70,7 +70,7 @@ contract FontNFTExchange is Context, AccessControl {
         uint256 price; //price for whole NFT, of acceptable price if its auction [f]
         uint256 minPrice; //Min price the bidding starts with [f]
         uint256 highestBidID; //Highest bid id. 
-        uint256 expires; //auction expires. post expire date, no one can bid id 
+        uint256 expires; //auction expires. post expire date, no one can bid id  @todo
         uint16 referral; //Affiliate commission percentage
         uint8 status; //Order status : 1/open, 2/filled, 3/cancelled
         
@@ -82,6 +82,7 @@ contract FontNFTExchange is Context, AccessControl {
     }    
     mapping (uint256 => Order) private OrderBook;
 
+    //This is temp struct used in function argument
     struct NFTOrder {
         uint256 nft; //NFT ID
         uint256 price; //Price the nft 
@@ -94,6 +95,7 @@ contract FontNFTExchange is Context, AccessControl {
         address token; //Payment token
     }
 
+    //Bidding item stored here. 
     struct Bid {
         uint256 orderID;
         uint256 offer;
@@ -110,9 +112,9 @@ contract FontNFTExchange is Context, AccessControl {
         
     //Referral fees earned per user per token, subject to reset on claim 
     mapping (address => mapping(address => uint256)) private ReferralFees;
-    //Commission fees earned so for, subject to reset on claim
+    //Commission fees earned by exchange, per token so for, subject to reset on claim
     mapping (address => uint256) private commissionFees;
-    //Font Rewards 
+    //Font Rewards for buyers and selles
     mapping (address => uint256) private FontRewards;
     //Bids per auction order 
     mapping (uint256 => uint256[]) private AuctionBids;
@@ -152,16 +154,18 @@ contract FontNFTExchange is Context, AccessControl {
         require(nfts.length == royalities.length, "UL");
         uint256[] memory amounts = new uint256[](nfts.length);
         for(uint256 i = 0; i < nfts.length; i++) {
-            require(NFTs[nfts[i]].status != 1, 'A');  
+            require(NFTs[nfts[i]].status != 1, 'A');  //
             amounts[i] = 1; 
+
             //If moving for first time
             if(NFTs[nfts[i]].status == 0) {
-                NFTs[nfts[i]].creatror = msg.sender; 
+                NFTs[nfts[i]].creator = msg.sender; 
                 NFTs[nfts[i]].royality = royalities[i];
             }        
             NFTs[nfts[i]].status = 1;
             NFTs[nfts[i]].owner = msg.sender;
             NFTs[nfts[i]].orderID = 0;
+
         }
         FontNFT.safeBatchTransferFrom(msg.sender, address(this), nfts, amounts, '');
         NFTMovedInBulk(nfts.length);
@@ -191,7 +195,7 @@ contract FontNFTExchange is Context, AccessControl {
         for(uint256 i = 0; i < nfts.length; i++) {
             require(NFTs[nfts[i]].status == 1, 'NC');
             require(NFTs[nfts[i]].owner == msg.sender, 'D');
-            require(NFTs[nfts[i]].creatror == msg.sender, 'D');
+            require(NFTs[nfts[i]].creator == msg.sender, 'D');
             require(royalities[i] < maxRoyalityAllowed, 'H');
             NFTs[nfts[i]].royality = royalities[i];
         }
@@ -201,6 +205,57 @@ contract FontNFTExchange is Context, AccessControl {
     /*************************************************************************/
     /******************************** exchange *******************************/
     /*************************************************************************/
+    event MovedNFTCreatedOrder(uint256);
+    function moveCreateOrder(uint256 nft, uint256 price, uint256 minPrice, uint256 expires, bool auction, uint16 referral, uint16 royality, address token ) external {
+        require(NFTs[nft].status != 1, 'A');  //
+        require(royality < maxRoyalityAllowed, 'H');
+        require(paymentTokens[token], 'T');
+        require(referral < 8000, 'R');
+        require(NFTs[nft].orderID == 0, 'IO');
+
+        address _msgSender = msg.sender;
+
+        if(NFTs[nft].status == 0) {
+            NFTs[nft].creator = _msgSender; 
+        }
+        if(NFTs[nft].creator == _msgSender) {
+            NFTs[nft].royality = royality;
+        }
+        
+        NFTs[nft].owner = _msgSender; 
+        NFTs[nft].status = 1;
+
+        if(auction) {
+            //require(expires > block.timestamp, 'E');
+            require(minPrice < price && minPrice > 0, 'M');
+            OrderBook[OrderID].minPrice = minPrice;
+
+            if(expires  > 0) {
+                OrderBook[OrderID].expires = expires + block.timestamp; //@todo fix this expires thing
+            }                
+
+            OrderBook[OrderID].auction = auction;
+        }
+
+        //Common settings for both the types 
+        OrderBook[OrderID].nft = nft;
+        
+        OrderBook[OrderID].referral = referral;
+        OrderBook[OrderID].status = 1;
+        //OrderBook[OrderID].highestBidID = 0;
+        OrderBook[OrderID].price = price;
+        OrderBook[OrderID].token = token;
+        OrderBook[OrderID].seller = _msgSender;
+
+        NFTs[nft].orderID = OrderID;
+        //User Orders
+        UserOrders[_msgSender].push(OrderID);
+        OrderID++;
+
+        
+        FontNFT.safeTransferFrom(msg.sender, address(this), nft, 1, '');
+        emit MovedNFTCreatedOrder(nft);
+    }
     
     function orderCreateBulk(uint256[] memory nfts, uint256[] memory  price, uint256[] memory  minPrice, uint256[] memory  expires, bool[] memory  auction, uint16[] memory  referral, address[] memory  token) external {
         require(nfts.length == price.length && nfts.length == minPrice.length && nfts.length == expires.length, "Mm");
@@ -261,11 +316,13 @@ contract FontNFTExchange is Context, AccessControl {
             if(expires  > 0) {
                 OrderBook[OrderID].expires = expires + block.timestamp; //@todo fix this expires thing
             }            
+
+            OrderBook[OrderID].auction = auction;
         }
 
         //Common settings for both the types 
         OrderBook[OrderID].nft = nft;
-        OrderBook[OrderID].auction = auction;
+        
         OrderBook[OrderID].referral = referral;
         OrderBook[OrderID].status = 1;
         //OrderBook[OrderID].highestBidID = 0;
@@ -300,7 +357,8 @@ contract FontNFTExchange is Context, AccessControl {
                 expires = expires + block.timestamp;
             }            
         }
-        else {
+        //Token can be edited only for spot orders and auctions orders witout bid 
+        if(!OrderBook[_order_id].auction || OrderBook[_order_id].highestBidID == 0) {
             OrderBook[_order_id].token = token;
         }
         OrderBook[_order_id].price = price;
@@ -326,7 +384,7 @@ contract FontNFTExchange is Context, AccessControl {
         //update the nft book
         NFTs[OrderBook[_order_id].nft].orderID = 0;
 
-        //@todo emit it
+        
         emit OrderCanceled(_order_id);
     }
 
@@ -370,25 +428,27 @@ contract FontNFTExchange is Context, AccessControl {
     }
 
     event BidTopuped(uint256, uint256, uint256);
-    function orderBidTopup(uint256 _order_id, uint256 _bid_id, uint256 _amount) external {
+    function orderBidTopup(uint256 _bid_id, uint256 _amount) external {
         //@todo remove _order_id from parameter and take it from bid id 
+        
+        //make sure the bidder is the owner of the bid 
+        require(Bids[_bid_id].bidder == msg.sender, "D"); 
 
+        uint256 _order_id = Bids[_bid_id].orderID;
         //make sure the order is live 
         require(OrderBook[_order_id].status == 1, "NO");
         //Only Auction type
         require(OrderBook[_order_id].auction, "NA");        
         //make sure the nft is under custody
         require(NFTs[OrderBook[_order_id].nft].status == 1, "NC");      
-        //make sure the bidder is the owner of the bid 
-        require(Bids[_bid_id].bidder == msg.sender, "D"); 
-        //Make sure the bid belong to the offer 
-        require(Bids[_bid_id].orderID == _order_id, "Mm"); 
+
+        
 
         //old amount and new amount should be higher than highest bid
         require((Bids[_bid_id].offer + _amount) > Bids[OrderBook[_order_id].highestBidID].offer, "NE");
 
         //update offer to new amount 
-        Bids[_bid_id].offer = Bids[_bid_id].offer + _amount;
+        Bids[_bid_id].offer += _amount;
 
         //update the highestBidID to the order 
         OrderBook[_order_id].highestBidID = _bid_id;
@@ -751,7 +811,7 @@ contract FontNFTExchange is Context, AccessControl {
 
         //If moving for first time
         if(NFTs[nft].status == 0) {
-            NFTs[nft].creatror = msg.sender;
+            NFTs[nft].creator = msg.sender;
             NFTs[nft].royality = royality;
         }
         

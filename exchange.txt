@@ -8,8 +8,8 @@ Features:
     Keep number of depth / histoty 
     Auction
     0 Commission for trading in font 
-    Commssion burn 
-    Font mining (configurable)
+    Commssion burn ?
+    Font mining (configurable) ?
     Affilate commissions 
     Auto ETH to WETH
 
@@ -203,6 +203,7 @@ views
     commissions affiliate
     my orders 
     my bids 
+expires
 
 
 

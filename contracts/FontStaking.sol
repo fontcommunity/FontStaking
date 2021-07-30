@@ -503,7 +503,7 @@ contract FontStaking is AccessControl {
         uint256 _stake_id = stakeCounter;
 
         //Add total token staked per address
-        usersStake[msg.sender] = usersStake[msg.sender].add(_amount);
+        usersStake[msg.sender] += _amount; //usersStake[msg.sender].add(_amount);
         
 
         //Add item to StakeMap
@@ -517,7 +517,7 @@ contract FontStaking is AccessControl {
         userStakeIds[msg.sender].push(_stake_id);
 
         //Total font currently staked
-        totalStaked = totalStaked.add(_amount);
+        totalStaked += _amount;
 
         //Update Stake Counter 
         stakeCounter++;
@@ -764,9 +764,10 @@ contract FontStaking is AccessControl {
         require(lastSnapshotTime < (_blockTimestamp - minSnapshotInterval), "Wait"); //@done
         uint256 _totalEligibleFontsForRewards = 0;
         
+        stakingInfo storage _StakeMap;
 
         for(uint256 i = firstUnclaimedStakeId; i < stakeCounter; i++) {
-            stakingInfo memory _StakeMap = StakeMap[i];
+            _StakeMap = StakeMap[i];
             //check if user is not already claimed, have crosed the date, and account is not excluded to get rewards
             if(!_StakeMap.claimed && (_StakeMap.lockedTime + _StakeMap.duration < _blockTimestamp)) { //@done date
                 //calculate the total eligible fonts for staking rewards 

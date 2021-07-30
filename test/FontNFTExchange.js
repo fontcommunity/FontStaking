@@ -291,7 +291,7 @@ describe("NFT EXchange", function() {
     });    
 
     it("User able to topup above the current bid price", async function () {
-        await expect(exchange.connect(addr3).orderBidTopup(14, 1, 1000)).to.emit(exchange, 'BidTopuped');
+        await expect(exchange.connect(addr3).orderBidTopup( 1, 1000)).to.emit(exchange, 'BidTopuped');
     });    
 
     it("User should not able to bid below the highest offer", async function () {
@@ -342,6 +342,23 @@ describe("NFT EXchange", function() {
 
   });
 
+  describe("Move and create Order", async function () {
+
+    it("Move and create order in single txn", async function () {
+        var NFTID = 60;
+        await fontNFTTokens.connect(owner).mint(addr3.address, NFTID, 1, ZERO_BYTES32);
+        await fontNFTTokens.connect(addr3).setApprovalForAll(exchange.address, true);
+
+        var price = 100*Mn;
+        var minPrice = 23*Mn;
+        var expires = 2;
+        var auction = false;
+        var referral = 350;
+        var royality = 550;
+
+        await expect(exchange.connect(addr3).moveCreateOrder(NFTID, price, minPrice, expires, auction, referral, royality, ptUSDA.address)).to.emit(exchange, 'MovedNFTCreatedOrder');        
+    });
+  });
 });
 
 function NFTOrderData(start, end, address) {
