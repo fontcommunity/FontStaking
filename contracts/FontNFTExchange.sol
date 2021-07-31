@@ -106,6 +106,9 @@ contract FontNFTExchange is Context, AccessControl {
         
     }
     mapping (uint256 => Bid) private Bids;
+    //Bids per auction order 
+    mapping (uint256 => uint256[]) private AuctionBids;
+    uint256 private BidID = 1;
 
     //Payment Tokens 
     mapping (address => bool) private paymentTokens;
@@ -116,14 +119,11 @@ contract FontNFTExchange is Context, AccessControl {
     mapping (address => uint256) private commissionFees;
     //Font Rewards for buyers and selles
     mapping (address => uint256) private FontRewards;
-    //Bids per auction order 
-    mapping (uint256 => uint256[]) private AuctionBids;
-
     //Orders per user
     mapping (address => uint256[]) private UserOrders;
 
     uint256 private OrderID = 1;
-    uint256 private BidID = 1;
+    
 
 
     //Constructors
@@ -354,7 +354,7 @@ contract FontNFTExchange is Context, AccessControl {
             OrderBook[_order_id].minPrice = minPrice;
 
             if(expires  > 0) {
-                expires = expires + block.timestamp;
+                OrderBook[_order_id].expires = expires + block.timestamp;
             }            
         }
         //Token can be edited only for spot orders and auctions orders witout bid 

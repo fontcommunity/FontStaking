@@ -1,0 +1,6 @@
+Minter, this is easy 
+ERC721, Yes
+Accept BNB/FTM: yes
+Font rewards yes 
+Auction without expire
+
