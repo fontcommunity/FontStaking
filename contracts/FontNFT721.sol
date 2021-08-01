@@ -24,14 +24,13 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
     //Address to distribute the Exchange fees, usually staking contract 
     address private feesDistributionAddress;
-    //Address of the contract owner
-    address private ownerAddress;
+
 
     //Reward Withdrawal pauasable
     bool FontRewardPaused = true;
 
     //FONT ERC20 Address
-    address private FontERC20Address = 0x4C25Bdf026Ea05F32713F00f73Ca55857Fbf6342; //@deploy change this per network 
+    address private FontERC20Address; //@deploy change this per network 
 
     //Settings 
     uint256 private exchangeFees = 400; //1% = 100
@@ -52,7 +51,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     mapping (uint256 => NFT) private NFTs;
 
     //real creator of the font who is eligible to mint 
-    mapping (uint256 => address) private OriginalNFTCreators;
+    mapping (uint256 => address) public OriginalNFTCreators;
 
     struct Order {
         uint256 nft; //NFT ID [f]
@@ -109,32 +108,35 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
 
     //Constructors
-    constructor() ERC721("Font NFT", "FONT"){
+    constructor(address _FontERC20Address) ERC721("Font NFT", "FONT"){
         _setupRole(ADMIN_ROLE, msg.sender); // Assign admin role to contract creator
-        ownerAddress = msg.sender;
+        
+        FontERC20Address = _FontERC20Address;
 
         //Add ETH as payment token
         paymentTokens[address(0)] = true;
     }    
 
     //Mint the NFT and transfer to minter
-    function safeMint(uint256 nft) public {
-        require(OriginalNFTCreators[nft] == msg.sender, "Denied");
+    function safeMint(uint256 nft) external {
+        require(OriginalNFTCreators[nft] == msg.sender, "D");
         _safeMint(msg.sender, nft);
     }
     
     //Mint the NFT and transfer to address, can be used by admin 
     function safeMintTo(address to, uint256 nft) external {
-        require(hasRole(ADMIN_ROLE, msg.sender), "D");
-        require(OriginalNFTCreators[nft] == to, "Denied");
+        require(hasRole(ADMIN_ROLE, msg.sender) && OriginalNFTCreators[nft] == to, "D");
         _safeMint(to, nft);        
     }
 
     //Mint an NFT and create sell order with price, royality and commssion
-    
+    event OrderCreated(uint256);
     function safeMintAndList(uint256 nft, uint256 price, uint256 minPrice, uint16 royality, uint16 referral, address token, bool auction) external {
 
-        require(OriginalNFTCreators[nft] == msg.sender, "Denied");
+        require((
+            OriginalNFTCreators[nft] == msg.sender
+            && paymentTokens[token]
+            ), "D");
 
         if(auction) {
             require(minPrice > 0, "MP"); //minPrice should be above 0
@@ -148,6 +150,8 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         uint256 _order_id = _orderCreate(nft, price, minPrice, referral, token, auction);
 
         _safeMint(address(this), nft);
+
+        OrderCreated(_order_id);
     }
 
     function _burn(uint256 nft) internal override(ERC721, ERC721URIStorage) {
@@ -205,7 +209,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     /*************************************************************************/
     
 
-    event OrderCreated(uint256);
+    
     function orderCreate(uint256 nft, uint256 price, uint256 minPrice, uint16 referral, address token, bool auction) external {
         //check all the requires
 
