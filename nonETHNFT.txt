@@ -4,3 +4,29 @@ Accept BNB/FTM: yes
 Font rewards yes 
 Auction without expire
 
+
+
+Receive ETH/ERC20
+    orderBid
+    orderBidTopup
+    orderBuy
+    orderBuyWithETH
+    _distributePayment
+    _orderBuy
+
+
+receivePaymentETH(from, token, amount);
+
+
+Send ETH/ERC20
+    orderCancel (using orderBidsCancelAll if )
+    orderBidsCancelAll
+    orderBidCancel
+    withdrawFees: withdrawFees
+    claimEarnings : Added
+    
+
+SendMoney()    
+
+
+Todo, have a variable to unlock the reward, only during unpass, rewards can be withdrawan, To stop any vunurabioity 

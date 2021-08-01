@@ -27,6 +27,9 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     //Address of the contract owner
     address private ownerAddress;
 
+    //Reward Withdrawal pauasable
+    bool FontRewardPaused = true;
+
     //FONT ERC20 Address
     address private FontERC20Address = 0x4C25Bdf026Ea05F32713F00f73Ca55857Fbf6342; //@deploy change this per network 
 
@@ -207,10 +210,15 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         //check all the requires
 
         require(
+            //Check if NFT is under contract custody
             (NFTs[nft].status == 1 
+            //Check if creator is owner
             && NFTs[nft].owner == msg.sender 
+            //Check if NFT is not under any order 
             && NFTs[nft].orderID == 0 
+            //Check if payment token exists
             && paymentTokens[token] 
+            //check if referral commission is not more than 80% 
             && referral < 8000), "D");
 
         if(auction) {
@@ -248,10 +256,15 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     function orderEdit(uint256 _order_id, uint256 price, uint256 minPrice, uint16 referral, address token) external {
 
         require(
+            //Only order owner can edit it 
             (OrderBook[_order_id].seller == msg.sender 
+            //Only NFT owner can edit it
             && NFTs[OrderBook[_order_id].nft].owner == msg.sender 
+            //Only Open order can be edited 
             && OrderBook[_order_id].status == 1 
+            //NFT must my under contract custody 
             && NFTs[OrderBook[_order_id].nft].status == 1 
+            //Referral commission should be over 80%
             && referral < 8000), 'D');
 
         //Auction
@@ -276,9 +289,13 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     function orderCancel(uint256 _order_id) external {
 
         require(
+            //Only order creator can cancel it
             (OrderBook[_order_id].seller == msg.sender 
+            //Only NFT owner can cancel it 
             && NFTs[OrderBook[_order_id].nft].owner == msg.sender 
+            //Only open order can be canceled 
             && OrderBook[_order_id].status == 1 
+            //Only NFT under contract custody can be cancled 
             && NFTs[OrderBook[_order_id].nft].status == 1), 'D');
 
         //Auction, cancel all the bids
@@ -298,43 +315,53 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
     //@todo add ETH support
     event BidOrder(uint256 _order_id, uint256 _amount, uint256 _bid_id);
-    function orderBid(uint256 _order_id, uint256 _amount, address _ref) external {
+    function orderBid(uint256 _order_id, uint256 _amount, address _ref) external payable {
         
         require((
+            //Can Bid only for open order 
             OrderBook[_order_id].status == 1
+            //Can bid only for auction orders 
             && OrderBook[_order_id].auction
+            //Can bid only if NFT is under contract custody 
             && NFTs[OrderBook[_order_id].nft].status == 1
+            //Can Bid only if amount is above min price 
             && OrderBook[_order_id].minPrice < _amount
+            //Can bid only if amount is above previous higher bid
             && Bids[OrderBook[_order_id].highestBidID].offer < _amount
         ), 'D');
 
-        Bids[BidID].orderID = _order_id;
-        Bids[BidID].bidder = msg.sender;
+        uint256 _bid_id = BidID;
+
+        Bids[_bid_id].orderID = _order_id;
+        Bids[_bid_id].bidder = msg.sender;
         //Bids[BidID].timestamp = block.timestamp;
-        Bids[BidID].offer = _amount;
-        Bids[BidID].status = 1;
+        Bids[_bid_id].offer = _amount;
+        Bids[_bid_id].status = 1;
 
         //push the bid id to order id
-        AuctionBids[_order_id].push(BidID);
+        AuctionBids[_order_id].push(_bid_id);
 
         //update the order with highest bid 
-        OrderBook[_order_id].highestBidID = BidID;
+        OrderBook[_order_id].highestBidID = _bid_id;
 
         //referral link
         if(_ref != address(0) && OrderBook[_order_id].referral > 0) {
-            Bids[BidID].referral = _ref;
+            Bids[_bid_id].referral = _ref;
         }
+        
         BidID++;
 
-        IERC20(OrderBook[_order_id].token).safeTransferFrom(msg.sender, address(this), _amount);
+        //ITRC20(OrderBook[_order_id].token).safeTransferFrom(msg.sender, address(this), _amount);
 
-        emit BidOrder(_order_id, _amount, BidID - 1);
+        _receiveMoney(msg.sender, address(this), OrderBook[_order_id].token, _amount);
+
+        emit BidOrder(_order_id, _amount, _bid_id);
 
     }    
 
     //@todo add ETH support
     event BidTopuped(uint256, uint256, uint256);
-    function orderBidTopup(uint256 _bid_id, uint256 _amount) external {        
+    function orderBidTopup(uint256 _bid_id, uint256 _amount) external payable {        
         require((
             //make sure the bidder is the owner of the bid 
             Bids[_bid_id].bidder == msg.sender
@@ -356,7 +383,9 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         //update the highestBidID to the order 
         OrderBook[_order_id].highestBidID = _bid_id;
 
-        IERC20(OrderBook[_order_id].token).safeTransferFrom(msg.sender, address(this), _amount);
+        
+        //ITRC20(OrderBook[_order_id].token).safeTransferFrom(msg.sender, address(this), _amount);
+        _receiveMoney(msg.sender, address(this), OrderBook[_order_id].token, _amount);
 
         emit BidTopuped(_order_id, _bid_id, _amount);
     }    
@@ -366,9 +395,15 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     function orderBidApprove(uint256 _bid_id, bool _withdrawNFT) external {
         
         require(
+            //Order should be open
             (OrderBook[Bids[_bid_id].orderID].status == 1
+            //Only able to approve open bids 
+            && Bids[_bid_id].status == 1
+            //NFT should be under contract custody 
             && NFTs[OrderBook[Bids[_bid_id].orderID].nft].status == 1
+            //Only seller can approve it
             && OrderBook[Bids[_bid_id].orderID].seller == msg.sender
+            //Only able to approve order of auction tyep 
             && OrderBook[Bids[_bid_id].orderID].auction), 'D');
 
         //update the bid 
@@ -403,6 +438,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
     
     event BidCanceled(uint256);
+
     function orderBidCancel(uint256 _bid_id) external {
         
         require((
@@ -420,12 +456,13 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
         Bids[_bid_id].status = 3;
 
-        IERC20(OrderBook[Bids[_bid_id].orderID].token).safeTransfer(Bids[_bid_id].bidder, Bids[_bid_id].offer);
+        //Send the money
+        _sendMoney(Bids[_bid_id].bidder, Bids[_bid_id].offer, OrderBook[Bids[_bid_id].orderID].token);        
 
         //@todo if a bid cancled, find highest bid and update the order book highest bid 
         _setOrderHighestBid(Bids[_bid_id].orderID);
 
-        //@todo emit
+        //emit
         emit BidCanceled(_bid_id);
     }
 
@@ -433,14 +470,15 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
     //Buy the spot order. 
     event OrderBought(uint256 _order_id);
-    function orderBuy(uint256 _order_id, address _ref, bool _withdrawNFT) external {
+    function orderBuy(uint256 _order_id, address _ref, bool _withdrawNFT) external payable {
         //allrequires 
         require(NFTs[OrderBook[_order_id].nft].status == 1, "NC"); 
         require(OrderBook[_order_id].status == 1);
 
 
-        IERC20(OrderBook[_order_id].token).safeTransferFrom(msg.sender, address(this), OrderBook[_order_id].price);
-
+        //ITRC20(OrderBook[_order_id].token).safeTransferFrom(msg.sender, address(this), OrderBook[_order_id].price);
+        
+        _receiveMoney(msg.sender, address(this), OrderBook[_order_id].token, OrderBook[_order_id].price);
 
         _orderBuy(_order_id, _ref, _withdrawNFT);
     }
@@ -501,7 +539,11 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         for(uint256 i = 0; i < AuctionBids[_order_id].length; i++) {
             if(Bids[AuctionBids[_order_id][i]].status == 1 && AuctionBids[_order_id][i] != _except) {
                 Bids[AuctionBids[_order_id][i]].status = 3;
-                IERC20(OrderBook[_order_id].token).safeTransfer(Bids[AuctionBids[_order_id][i]].bidder, Bids[AuctionBids[_order_id][i]].offer);
+                
+                //IERC20(OrderBook[_order_id].token).safeTransfer(Bids[AuctionBids[_order_id][i]].bidder, Bids[AuctionBids[_order_id][i]].offer);
+                //Send money
+                _sendMoney(Bids[AuctionBids[_order_id][i]].bidder, Bids[AuctionBids[_order_id][i]].offer, OrderBook[_order_id].token);
+
                 delete Bids[AuctionBids[_order_id][i]]; //@todo remove if this brings issue 
             }
         }
@@ -525,10 +567,12 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         require(hasRole(ADMIN_ROLE, msg.sender), "D");
         uint256 _amount = commissionFees[_token];
         commissionFees[_token] = 0;
-        IERC20(_token).safeTransfer(feesDistributionAddress, _amount);
+
+        //Send money
+        _sendMoney(feesDistributionAddress, _amount, _token);
     }
 
-    function adminSettings(uint16 _maxRoyalityAllowed, uint256 _exchangeFees, address _feesDistributionAddress, address _FontERC20Address) external {
+    function adminSettings(uint16 _maxRoyalityAllowed, uint256 _exchangeFees, address _feesDistributionAddress, address _FontERC20Address, bool _FontRewardPaused) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "D");
         require(_maxRoyalityAllowed < 5000, "H");
         
@@ -536,6 +580,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         feesDistributionAddress = _feesDistributionAddress;
         maxRoyalityAllowed = _maxRoyalityAllowed;
         FontERC20Address = _FontERC20Address;
+        FontRewardPaused = _FontRewardPaused;
     }
 
     event UserAddedBulk(uint256);
@@ -553,9 +598,12 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
     event UserEdited(address, uint256);
     function mapEditUser(address _address, uint256 _nft) external {
-        require(hasRole(ADMIN_ROLE, msg.sender), "D");
-        require(OriginalNFTCreators[_nft] != address(0), 'NX');
-        require(_nft > 0, 'UID');
+
+        require((
+            hasRole(ADMIN_ROLE, msg.sender)
+            && OriginalNFTCreators[_nft] != address(0)
+            && _nft > 0
+        ), 'D');
 
         OriginalNFTCreators[_nft] = _address;
         emit UserEdited(_address, _nft);
@@ -600,7 +648,8 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         require(ReferralFees[msg.sender][_token] > 0, "A");
         uint256 _amount = ReferralFees[msg.sender][_token];
         ReferralFees[msg.sender][_token] = 0;
-        IERC20(_token).safeTransfer(msg.sender, _amount);
+        //Send money
+        _sendMoney(msg.sender, _amount, _token);
         emit EarningsClaimed(msg.sender, _token, _amount);
     }
 
@@ -620,15 +669,16 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     /********************************* Helpers *******************************/
     /*************************************************************************/ 
 
-
-
     //Set the highest bid for order in order book
     //@todo test this 
     function _setOrderHighestBid(uint256 _order_id) internal {
-        require(OrderBook[_order_id].status == 1, "NO");
-        require(OrderBook[_order_id].auction, "NA");
-        require(NFTs[OrderBook[_order_id].nft].status == 1, "NC"); 
-        require(AuctionBids[_order_id].length > 0, "NB"); 
+
+        require((
+            OrderBook[_order_id].status == 1
+            && OrderBook[_order_id].auction
+            && NFTs[OrderBook[_order_id].nft].status == 1
+            && AuctionBids[_order_id].length > 0
+        ), 'D');
         
         uint256 _highestBidID = 0;
         uint256 _highestBidOffer = 0;
@@ -666,16 +716,36 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
         _tmp = _amount - _fees;
 
-        if(_token == address(0)) { //Send ETH
-            payable(_seller).transfer(_tmp);
-        }
-        else { //Send  ERC20 token
-            IERC20(_token).safeTransfer(_seller,_tmp);
-        }
+        //Send the money
+        _sendMoney(_seller, _tmp, _token);
 
         //Font Rewards
         if(_amount > 0 && FontRewardPerToken[_token] > 0) {
             FontRewards[_buyer] = _amount / FontRewardPerToken[_token];
+        }
+    }
+
+    //Helper function to send money, either ERC20 token or ETH, 
+    //@todo safety check
+    function _sendMoney(address to, uint256 amount, address token) internal {
+        //https://solidity-by-example.org/sending-ether/
+        if(token == address(0)) {
+            (bool sent, bytes memory data) = to.call{value: amount}("");
+            require(sent, "EF");
+        }
+        else {
+            IERC20(token).safeTransfer(to, amount);
+        }
+    }
+
+    //Helper function to receive money, either ERC20 or ETH, 
+    //@todo safety check
+    function _receiveMoney(address from, address to, address token, uint256 amount) internal {
+        if(token == address(0)) {
+            require(msg.value >= amount, "ETH");
+        }
+        else {
+            IERC20(token).safeTransferFrom(from, to, amount);
         }
     }
 
@@ -691,6 +761,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
 /* Error Codes: This is reduce the contract size 
 /* 
+    EF ETH failed to send
     A Already
     D Denied
     UL Unequal length
