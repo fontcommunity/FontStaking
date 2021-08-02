@@ -40,6 +40,8 @@ describe("NFT Non ETH", function() {
   const ZERO_BYTES32 = 0x0000000000000000000000000000000000000000000000000000000000000000;
   const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
+  const StakingAddress = '0xe771De05b68515Cbb31207D180f3352CA04FdeF6';
+
 
   const delay = ms => new Promise(res => setTimeout(res, ms));
 
@@ -63,7 +65,7 @@ describe("NFT Non ETH", function() {
     fontToken = await FontToken.deploy("font", "FONT", 18);
     ptUSDA = await PaymentTokenA.deploy("USDA", "USDA", 6);
     ptUSDB = await PaymentTokenA.deploy("USDB", "USDB", 9);
-    exchange = await FontNFT721.deploy(fontToken.address);
+    exchange = await FontNFT721.deploy(fontToken.address, StakingAddress);
 
     console.log("FONT Token Deployed at ::", fontToken.address);
     console.log("Payment Token A Deployed at ::", ptUSDA.address);
@@ -91,19 +93,29 @@ describe("NFT Non ETH", function() {
 
   });
 
+  describe("Admin settings", async function(){
+    it("Non Admin should  not able to set the Font Rewards per payment token", async function () {
+        await expect(exchange.connect(addr4).adminSetFontRewards(ptUSDA.address, 25*Mn)).to.be.revertedWith('D');
+    });    
+
+    it("Admin should able to set the Font Rewards per payment token", async function () {
+        await expect(exchange.connect(owner).adminSetFontRewards(ptUSDA.address, 25*Mn)).to.emit(exchange, 'UpdatedFontRewardsPerTOken');
+    });        
+  });
+
   describe("Minting NFT", async function () {
     it("Non Owner should not able to mint NFT", async function () {
-        await expect(exchange.connect(addr2).safeMint(1)).to.be.revertedWith('D');
+        await expect(exchange.connect(addr2).safeMint(1,250)).to.be.revertedWith('D');
     });
     it("Owner should able to mint NFT", async function () {
-        await expect(exchange.connect(addr3).safeMint(1)).to.emit(exchange, 'Transfer');
+        await expect(exchange.connect(addr3).safeMint(1, 250)).to.emit(exchange, 'Transfer');
     });    
     it("Admin can mint on behalf of others", async function () {
-        await expect(exchange.connect(owner).safeMintTo(addr3.address, 2)).to.emit(exchange, 'Transfer');
+        await expect(exchange.connect(owner).safeMintTo(addr3.address, 2, 350)).to.emit(exchange, 'Transfer');
     });        
 
     it("Admin cannot mint on behalf of non owners", async function () {
-        await expect(exchange.connect(owner).safeMintTo(addr2.address, 2)).to.be.revertedWith('D');
+        await expect(exchange.connect(owner).safeMintTo(addr2.address, 2, 350)).to.be.revertedWith('D');
     });            
 
     it("Non Owner should not able to do safeMintAndList", async function () {
@@ -122,10 +134,116 @@ describe("NFT Non ETH", function() {
         await expect(exchange.connect(addr3).safeMintAndList(4, 100*Mn, 10*Mn, 100, 200, ptUSDA.address, true)).to.emit(exchange, 'OrderCreated');
     });
 
+    
 
   });
 
+  describe("Move NFTs", async function () {
+
+    it("Non Owner should not able to do move out NFT", async function () {
+        await expect(exchange.connect(addr2).moveNFTOut(5)).to.be.revertedWith('D');
+    });    
+
+    
+    it("Owner should able to do bring the NFT under contract custody", async function () {
+        var NFT = await exchange.connect(addr3).viewNFT(1);
+        //LogNFT(NFT);
+        await expect(exchange.connect(addr3).moveNFTin(1)).to.emit(exchange, 'Transfer');
+        NFT = await exchange.connect(addr3).viewNFT(1);
+        //LogNFT(NFT);        
+    })
+
+    it("Owner should able to move out NFT", async function () {
+        //await expect(exchange.connect(addr3).setApprovalForAll(exchange.address, true)).to.emit(exchange, 'ApprovalForAll');
+        var _owner = await exchange.connect(addr3).ownerOf(1);
+        //console.log(_owner, exchange.address);
+        //await exchange.connect(addr3).moveNFTOut(1);
+        await expect(exchange.connect(addr3).moveNFTOut(1)).to.emit(exchange, 'Transfer');
+        _owner = await exchange.connect(addr3).ownerOf(1);
+        //console.log(_owner, exchange.address);
+    });    
+
+
+    it("Owner should able to Update Royality", async function () {
+        var newRoyality = 754;
+        await expect(exchange.connect(addr3).moveNFTin(2)).to.emit(exchange, 'Transfer');
+        NFT = await exchange.connect(addr3).viewNFT(2);
+        await expect(NFT.royality).to.equal(350);
+        await expect(exchange.connect(addr3).updateRoyality(2, newRoyality)).to.emit(exchange, 'RoyalitiesUpdated');
+        NFT = await exchange.connect(addr3).viewNFT(2);
+        await expect(NFT.royality).to.equal(newRoyality);
+    });    
+
+    
+    
+  });  
+
+
   describe("Normal Orders", async function () {
+    it("Non Owner should not able to create an Spot order", async function () {
+        await expect(exchange.connect(addr2).orderCreate(2, 100*Mn, 0, 150, ptUSDA.address, false)).to.be.revertedWith('D');
+    });
+
+    it("Owner should able to create an Spot order", async function () {
+        await expect(exchange.connect(addr3).orderCreate(2, 100*Mn, 0, 150, ptUSDA.address, false)).to.emit(exchange, 'OrderCreated');
+        let anOrder = await exchange.connect(addr3).viewOrder(3);
+        await expect(anOrder.referral).to.equal(150);
+        await expect(anOrder.nft).to.equal(2);
+        await expect(anOrder.seller).to.equal(addr3.address);
+
+        //LogOrder(anOrder);
+    });
+
+    it("Non Owner should not able to edit a Spot order", async function () {
+        await expect(exchange.connect(addr2).orderEdit(3, 100*Mn, 0, 150, ptUSDA.address)).to.be.revertedWith('D');
+    });    
+
+    it("Owner should able to edit his Spot order", async function () {
+        await expect(exchange.connect(addr3).orderEdit(3, 80*Mn, 0, 500, ptUSDA.address)).to.emit(exchange, 'OrderEdited');
+        let anOrder = await exchange.connect(addr3).viewOrder(3);
+        await expect(anOrder.referral).to.equal(500);
+        await expect(anOrder.nft).to.equal(2);
+        await expect(anOrder.token).to.equal(ptUSDA.address);
+
+    });        
+
+    it("Anyone should able to buy a Spot order", async function () {
+        await ptUSDA.transfer(addr1.address, 1000*Mn);
+        await ptUSDA.connect(addr1).approve(exchange.address, 1000*Mn);
+        await expect(exchange.connect(addr1).orderBuy(3, addr4.address, false)).to.emit(exchange, 'OrderBought');
+        
+        let anOrder = await exchange.connect(addr3).viewOrder(3);
+    
+
+        var Earnings = await exchange.connect(addr1).viewReferralEarnings(addr4.address, ptUSDA.address);
+        await expect(Earnings.toString()).to.equal("4000000");
+
+        await exchange.connect(addr1).viewReferralEarnings(addr4.address, ptUSDA.address);
+        
+        await exchange.connect(owner).withdrawFees(ptUSDA.address);
+        var StakingAddressBalance = await ptUSDA.balanceOf(StakingAddress);
+        await expect(StakingAddressBalance.toString()).to.equal("3200000");
+
+        //console.log("StakingAddressBalance", StakingAddressBalance.toString());
+        
+
+        var FontRewards = await exchange.connect(addr1).viewFontRewards(addr1.address);
+        console.log("FontRewards", FontRewards.toString());
+
+
+        
+
+    });          
+    
+    
+
+    it("Non Owner should not able to cancel a Spot order", async function () {
+        await expect(exchange.connect(addr2).orderCancel(3)).to.be.revertedWith('D');
+    });        
+
+    it("Owner should able to cancel a Spot order", async function () {
+        //await expect(exchange.connect(addr3).orderCancel(3)).to.emit(exchange, 'OrderCanceled');
+    });            
 
   });
 
@@ -134,9 +252,6 @@ describe("NFT Non ETH", function() {
 
   });
   
-  describe("Move NFTs", async function () {
-
-  });  
 
   /*
   //check initial balance of both the tokens 
@@ -440,7 +555,7 @@ function LogNFT(nft) {
     console.log("Order ID :: ", nft.orderID.toString());
     console.log("Royality :: ", nft.royality);    
     console.log("Status :: ", nft.status);    
-    console.log("Creator :: ", nft.creatror);    
+    console.log("Creator :: ", nft.creator);    
     console.log("Owner :: ", nft.owner);    
     console.log();console.log();console.log();
 }
@@ -461,7 +576,6 @@ function LogOrder(structr) {
     console.log("Price :: ", structr.price.toString());
     console.log("minPrice :: ", structr.minPrice.toString());
     console.log("HighestBidID :: ", structr.highestBidID.toString());
-    console.log("Expires :: ", structr.expires.toString());
     console.log("Status :: ", structr.status);
     console.log("Auction? :: ", structr.auction);
     console.log("Referral :: ", structr.referral);

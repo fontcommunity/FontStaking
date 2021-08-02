@@ -25,10 +25,6 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     //Address to distribute the Exchange fees, usually staking contract 
     address private feesDistributionAddress;
 
-
-    //Reward Withdrawal pauasable
-    bool FontRewardPaused = true;
-
     //FONT ERC20 Address
     address private FontERC20Address; //@deploy change this per network 
 
@@ -100,6 +96,9 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     //Font rewards per token 
     mapping (address => uint256) private FontRewardPerToken;
 
+    //Reward Withdrawal pauasable
+    bool private FontRewardPaused  = true;    
+
     //Orders per user
     mapping (address => uint256[]) private UserOrders;
 
@@ -108,24 +107,43 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
 
     //Constructors
-    constructor(address _FontERC20Address) ERC721("Font NFT", "FONT"){
+    constructor(address _FontERC20Address, address _feesDistributionAddress) ERC721("Font NFT", "FONT"){
         _setupRole(ADMIN_ROLE, msg.sender); // Assign admin role to contract creator
         
         FontERC20Address = _FontERC20Address;
+
+        feesDistributionAddress = _feesDistributionAddress;
 
         //Add ETH as payment token
         paymentTokens[address(0)] = true;
     }    
 
     //Mint the NFT and transfer to minter
-    function safeMint(uint256 nft) external {
-        require(OriginalNFTCreators[nft] == msg.sender, "D");
+    function safeMint(uint256 nft, uint16 royality) external {
+        require(
+            OriginalNFTCreators[nft] == msg.sender
+            && royality < maxRoyalityAllowed, "D");
+
+        NFTs[nft].status = 2;
+        NFTs[nft].owner = msg.sender;
+        NFTs[nft].creator = msg.sender;
+        NFTs[nft].royality = royality;
+
         _safeMint(msg.sender, nft);
     }
     
     //Mint the NFT and transfer to address, can be used by admin 
-    function safeMintTo(address to, uint256 nft) external {
-        require(hasRole(ADMIN_ROLE, msg.sender) && OriginalNFTCreators[nft] == to, "D");
+    function safeMintTo(address to, uint256 nft, uint16 royality) external {
+        require(
+            hasRole(ADMIN_ROLE, msg.sender) 
+            && OriginalNFTCreators[nft] == to 
+            && royality < maxRoyalityAllowed, "D");
+
+        NFTs[nft].status = 2;
+        NFTs[nft].owner = to;
+        NFTs[nft].creator = to;      
+        NFTs[nft].royality = royality;
+
         _safeMint(to, nft);        
     }
 
@@ -136,6 +154,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         require((
             OriginalNFTCreators[nft] == msg.sender
             && paymentTokens[token]
+            && royality < maxRoyalityAllowed
             ), "D");
 
         if(auction) {
@@ -176,7 +195,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         require(NFTs[nft].status != 1, 'NC');
         NFTs[nft].status = 1;
         NFTs[nft].owner = msg.sender;
-        safeTransferFrom(msg.sender, address(this), nft, "");
+        safeTransferFrom(msg.sender, address(this), nft);
     }
     //Move NFT from contract
     function moveNFTOut(uint256 nft) external {
@@ -186,7 +205,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
             && NFTs[nft].orderID == 0), 'D');
 
         NFTs[nft].status = 2;
-        safeTransferFrom(address(this), msg.sender, nft, "");
+        _safeTransfer(address(this), msg.sender, nft, "");
     }
 
     //Update the NFT royalities in bulk
@@ -476,14 +495,20 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     event OrderBought(uint256 _order_id);
     function orderBuy(uint256 _order_id, address _ref, bool _withdrawNFT) external payable {
         //allrequires 
-        require(NFTs[OrderBook[_order_id].nft].status == 1, "NC"); 
-        require(OrderBook[_order_id].status == 1);
+        require((
+            //Only of Order status is live 
+            OrderBook[_order_id].status == 1
+            //Only of NFT is under custody
+            && NFTs[OrderBook[_order_id].nft].status == 1
+            //Only of order is auction 
+            && !OrderBook[_order_id].auction), "D"); 
+        
 
 
         //ITRC20(OrderBook[_order_id].token).safeTransferFrom(msg.sender, address(this), OrderBook[_order_id].price);
-        
+        //Get money from buyer
         _receiveMoney(msg.sender, address(this), OrderBook[_order_id].token, OrderBook[_order_id].price);
-
+        //Buy the order, take money
         _orderBuy(_order_id, _ref, _withdrawNFT);
     }
 
@@ -513,8 +538,9 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
         if(_withdrawNFT) {
             NFTs[OrderBook[_order_id].nft].status = 2;
-            safeTransferFrom(address(this), msg.sender, OrderBook[_order_id].nft, "");            
+            safeTransferFrom(address(this), msg.sender, OrderBook[_order_id].nft, "");   
         }
+        
 
         _distributePayment(OrderBook[_order_id].price, OrderBook[_order_id].referral, OrderBook[_order_id].token, _ref,  OrderBook[_order_id].seller, msg.sender);
 
@@ -565,6 +591,15 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         require(hasRole(ADMIN_ROLE, msg.sender), "D");
         paymentTokens[_address] = _status;         
     }
+
+    event UpdatedFontRewardsPerTOken(address token, uint256 amount);
+    function adminSetFontRewards(address _address, uint256 _amount) external {
+        require(hasRole(ADMIN_ROLE, msg.sender), "D");
+        FontRewardPerToken[_address] = _amount;
+        emit UpdatedFontRewardsPerTOken(_address, _amount);
+    }
+
+    
 
     //Admin can withdraw fees to fees distribution address
     function withdrawFees(address _token) external {
@@ -633,8 +668,12 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         return paymentTokens[_token];
     }
 
-    function viewEarnings(address _user, address _token) external view returns (uint256) {
+    function viewReferralEarnings(address _user, address _token) external view returns (uint256) {
         return ReferralFees[_user][_token];
+    }
+
+    function viewFontRewards(address _user) external view returns (uint256) {
+        return FontRewards[_user];
     }
 
     function viewBid(uint256 _id) external view returns (Bid memory) {
@@ -703,30 +742,37 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         uint256 _tmp = 0;
         
 
-        //Calculate exchange fee
+        //Calculate exchange fee, only for non FONT tokens and ETH
         if(_token != FontERC20Address) {
-            _tmp = _amount * exchangeFees / (10**4);
+            //Calculate the exchange commission
+            _tmp = (_amount * exchangeFees) / (10**4);
+            //Add it to exchange commission collection, we can take it later 
             commissionFees[_token] += _tmp;
+            //Add the commission to fees 
             _fees += _tmp;
+
             _tmp = 0;
         }
 
-        //Calculate Referral Fee
+        //Calculate Referral Fee, only if referral fee set and referral address is non 0
         if(_ref != address(0) && _refCommission > 0) {
-            _tmp = _amount * _refCommission / (10**4);
+            //Calculate the referral commission for the amount 
+            _tmp = (_amount * _refCommission) / (10**4);
+            //Add commission fees to referrer balance 
             ReferralFees[_ref][_token] += _tmp;
+            //Add Referral fess to total fees 
             _fees += _tmp;
         }
 
+        //Font Rewards only of amount is greater than 0 and token have reward program
+        if(_amount > 0 && FontRewardPerToken[_token] > 0) {
+            FontRewards[_buyer] += _amount * 10**18 / FontRewardPerToken[_token];
+        }        
+
         _tmp = _amount - _fees;
 
-        //Send the money
+        //Send the money to buyer
         _sendMoney(_seller, _tmp, _token);
-
-        //Font Rewards
-        if(_amount > 0 && FontRewardPerToken[_token] > 0) {
-            FontRewards[_buyer] = _amount / FontRewardPerToken[_token];
-        }
     }
 
     //Helper function to send money, either ERC20 token or ETH, 
@@ -747,6 +793,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     function _receiveMoney(address from, address to, address token, uint256 amount) internal {
         if(token == address(0)) {
             require(msg.value >= amount, "ETH");
+            
         }
         else {
             IERC20(token).safeTransferFrom(from, to, amount);

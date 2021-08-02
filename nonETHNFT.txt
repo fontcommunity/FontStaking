@@ -29,4 +29,22 @@ Send ETH/ERC20
 SendMoney()    
 
 
-Todo, have a variable to unlock the reward, only during unpass, rewards can be withdrawan, To stop any vunurabioity 
+################################################################################
+############################  Todo important stuffs  ###########################
+################################################################################
+
+_withdrawNFT
+    Keep it under contract custody     
+
+2) Have a variable to unlock the reward, only during unpass, rewards can be withdrawan, To stop any vunurabioity 
+
+Full oracle implementation for font rewards
+
+
+################################################################################
+#############################  Test cases to cover  ############################
+################################################################################
+
+Font rewards
+referrals 
+Oracle price 
