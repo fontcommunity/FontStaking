@@ -90,6 +90,10 @@ interface IERC20 {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
+interface ERC20{
+  function deposit() external payable;
+  function withdraw(uint256 amount) external;
+}
 
 
 /**
@@ -412,6 +416,10 @@ contract FontStaking is AccessControl {
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
+    //WETH address to convert ETH to WETH 
+    ERC20 weth;
+
+
     address ownerAddress; //Main admin of this contract
 
     uint256 taxFee = 400; // 1 = 0.01% for premature unstake
@@ -481,12 +489,15 @@ contract FontStaking is AccessControl {
     mapping (address => mapping(address => uint256)) public UserRewardBalance;
 
 
-    constructor(address _font_token_address)  {
+    constructor(address _font_token_address, address _weth)  {
         stakeCounter = 1;
         FONT_ERC20 = IERC20(_font_token_address); 
         ownerAddress = msg.sender;
         stakingPaused = false;
         _setupRole(ADMIN_ROLE, msg.sender); // Assign admin role to contract creator
+
+        weth = ERC20(_weth);
+
     }
 
     //@done
@@ -750,6 +761,12 @@ contract FontStaking is AccessControl {
     function calculateTax(uint256 _amount) internal view returns (uint256) {
         return _amount.mul(taxFee).div(10**4);
     }
+    
+    //Convert ETH to WETH and keep it in Contract for distribution
+    receive() external payable {
+        weth.deposit{value: msg.value}();
+    }
+
 
     /**********************************************************************************************************/
     /************************************************  Rewards  **********************************************/
