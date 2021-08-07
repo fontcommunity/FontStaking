@@ -1,10 +1,12 @@
+
+// SPDX-License-Identifier: MIT
+// Author: https://twitter.com/adalquardz
+
+pragma solidity ^0.8.0;
+
 // Sources flattened with hardhat v2.4.3 https://hardhat.org
 
 // File @openzeppelin/contracts/utils/Context.sol@v4.2.0
-
-// SPDX-License-Identifier: MIT
-
-pragma solidity ^0.8.0;
 
 /*
  * @dev Provides information about the current execution context, including the
@@ -29,9 +31,6 @@ abstract contract Context {
 
 // File @openzeppelin/contracts/utils/math/SafeMath.sol@v4.2.0
 
-// SPDX-License-Identifier: MIT
-
-pragma solidity ^0.8.0;
 
 // CAUTION
 // This version of SafeMath should only be used with Solidity 0.8 or later,
@@ -259,10 +258,6 @@ library SafeMath {
 
 // File @openzeppelin/contracts/utils/Strings.sol@v4.2.0
 
-// SPDX-License-Identifier: MIT
-
-pragma solidity ^0.8.0;
-
 /**
  * @dev String operations.
  */
@@ -329,10 +324,6 @@ library Strings {
 
 // File @openzeppelin/contracts/utils/introspection/IERC165.sol@v4.2.0
 
-// SPDX-License-Identifier: MIT
-
-pragma solidity ^0.8.0;
-
 /**
  * @dev Interface of the ERC165 standard, as defined in the
  * https://eips.ethereum.org/EIPS/eip-165[EIP].
@@ -356,10 +347,6 @@ interface IERC165 {
 
 
 // File @openzeppelin/contracts/utils/introspection/ERC165.sol@v4.2.0
-
-// SPDX-License-Identifier: MIT
-
-pragma solidity ^0.8.0;
 
 /**
  * @dev Implementation of the {IERC165} interface.
@@ -386,12 +373,6 @@ abstract contract ERC165 is IERC165 {
 
 
 // File @openzeppelin/contracts/access/AccessControl.sol@v4.2.0
-
-// SPDX-License-Identifier: MIT
-
-pragma solidity ^0.8.0;
-
-
 
 /**
  * @dev External interface of AccessControl declared to support ERC165 detection.
@@ -639,10 +620,6 @@ abstract contract AccessControl is Context, IAccessControl, ERC165 {
 
 // File contracts/FontStaking.sol
 
-// SPDX-License-Identifier: MIT
-// Author: https://twitter.com/adalquardz
-
-pragma solidity ^0.8.0;
 
 //import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -729,6 +706,10 @@ interface IERC20 {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
+interface ERC20{
+  function deposit() external payable;
+  function withdraw(uint256 amount) external;
+}
 
 
 /**
@@ -1051,6 +1032,10 @@ contract FontStaking is AccessControl {
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
+    //WETH address to convert ETH to WETH 
+    ERC20 weth;
+
+
     address ownerAddress; //Main admin of this contract
 
     uint256 taxFee = 400; // 1 = 0.01% for premature unstake
@@ -1120,12 +1105,15 @@ contract FontStaking is AccessControl {
     mapping (address => mapping(address => uint256)) public UserRewardBalance;
 
 
-    constructor(address _font_token_address)  {
+    constructor(address _font_token_address, address _weth)  {
         stakeCounter = 1;
         FONT_ERC20 = IERC20(_font_token_address); 
         ownerAddress = msg.sender;
         stakingPaused = false;
         _setupRole(ADMIN_ROLE, msg.sender); // Assign admin role to contract creator
+
+        weth = ERC20(_weth);
+
     }
 
     //@done
@@ -1142,7 +1130,7 @@ contract FontStaking is AccessControl {
         uint256 _stake_id = stakeCounter;
 
         //Add total token staked per address
-        usersStake[msg.sender] = usersStake[msg.sender].add(_amount);
+        usersStake[msg.sender] += _amount; //usersStake[msg.sender].add(_amount);
         
 
         //Add item to StakeMap
@@ -1156,7 +1144,7 @@ contract FontStaking is AccessControl {
         userStakeIds[msg.sender].push(_stake_id);
 
         //Total font currently staked
-        totalStaked = totalStaked.add(_amount);
+        totalStaked += _amount;
 
         //Update Stake Counter 
         stakeCounter++;
@@ -1199,7 +1187,7 @@ contract FontStaking is AccessControl {
         //Transfer token to user @todo safetransfer
         FONT_ERC20.safeTransfer(msg.sender, (_amount.sub(_taxfee)));
 
-        UnStaked(msg.sender, _stake_id, _amount, _taxfee);
+        emit UnStaked(msg.sender, _stake_id, _amount, _taxfee);
     }
 
     //Get detail about single stake info by address and id
@@ -1244,7 +1232,7 @@ contract FontStaking is AccessControl {
     function setMinStakeRequired(uint256 _amount) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Denied");
         minStakeAmount = _amount * (10**18);
-        ChangedMinStakeRequired(_amount);
+        emit ChangedMinStakeRequired(_amount);
     }
 
     //Kick out a stake, dont take tax. This is to help test stakes to withdraw without tax.
@@ -1315,7 +1303,7 @@ contract FontStaking is AccessControl {
         uint256 _totalTaxAmount = totalTaxAmount;
         totalTaxAmount = 0;
         FONT_ERC20.burn(_totalTaxAmount);
-        FontBurned(totalTaxAmount);
+        emit FontBurned(totalTaxAmount);
     }
 
     //withdraw the tokens that sent accidently 
@@ -1389,6 +1377,12 @@ contract FontStaking is AccessControl {
     function calculateTax(uint256 _amount) internal view returns (uint256) {
         return _amount.mul(taxFee).div(10**4);
     }
+    
+    //Convert ETH to WETH and keep it in Contract for distribution
+    receive() external payable {
+        weth.deposit{value: msg.value}();
+    }
+
 
     /**********************************************************************************************************/
     /************************************************  Rewards  **********************************************/
@@ -1403,9 +1397,10 @@ contract FontStaking is AccessControl {
         require(lastSnapshotTime < (_blockTimestamp - minSnapshotInterval), "Wait"); //@done
         uint256 _totalEligibleFontsForRewards = 0;
         
+        stakingInfo storage _StakeMap;
 
         for(uint256 i = firstUnclaimedStakeId; i < stakeCounter; i++) {
-            stakingInfo memory _StakeMap = StakeMap[i];
+            _StakeMap = StakeMap[i];
             //check if user is not already claimed, have crosed the date, and account is not excluded to get rewards
             if(!_StakeMap.claimed && (_StakeMap.lockedTime + _StakeMap.duration < _blockTimestamp)) { //@done date
                 //calculate the total eligible fonts for staking rewards 
