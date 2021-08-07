@@ -1,3 +1,6 @@
+
+
+
 Minter, this is easy 
 ERC721, Yes
 Accept BNB/FTM: yes
@@ -48,3 +51,15 @@ Full oracle implementation for font rewards
 Font rewards
 referrals 
 Oracle price 
+
+
+################################################################################
+################################### User Flow  #################################
+################################################################################
+
+Creator mints with royality in single txn
+
+Can mint and list with order in single txn 
+
+Can able to edit royality only if owner as well as creator are same 
+

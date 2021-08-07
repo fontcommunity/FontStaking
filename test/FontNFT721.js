@@ -94,18 +94,12 @@ describe("NFT Non ETH", function() {
   });
 
   describe("Admin settings", async function(){
-    it("Non Admin should  not able to set the Font Rewards per payment token", async function () {
-        await expect(exchange.connect(addr4).adminSetFontRewards(ptUSDA.address, 25*Mn)).to.be.revertedWith('D');
-    });    
 
-    it("Admin should able to set the Font Rewards per payment token", async function () {
-        await expect(exchange.connect(owner).adminSetFontRewards(ptUSDA.address, 25*Mn)).to.emit(exchange, 'UpdatedFontRewardsPerTOken');
-    });        
   });
 
   describe("Minting NFT", async function () {
     it("Non Owner should not able to mint NFT", async function () {
-        await expect(exchange.connect(addr2).safeMint(1,250)).to.be.revertedWith('D');
+        await expect(exchange.connect(addr2).safeMint(1, 250)).to.be.revertedWith('D');
     });
     it("Owner should able to mint NFT", async function () {
         await expect(exchange.connect(addr3).safeMint(1, 250)).to.emit(exchange, 'Transfer');
@@ -124,7 +118,7 @@ describe("NFT Non ETH", function() {
 
     it("Owner should able to do safeMintAndList Normal Order", async function () {
 
-        await exchange.connect(owner).adminEditPaymentToken(ptUSDA.address, true);
+        await exchange.connect(owner).adminEditPaymentToken(ptUSDA.address, true, 25*Mn);
 
         await expect(exchange.connect(addr3).setApprovalForAll(exchange.address, true)).to.emit(exchange, 'ApprovalForAll');
         await expect(exchange.connect(addr3).safeMintAndList(3, 100*Mn, 0, 100, 200, ptUSDA.address, false)).to.emit(exchange, 'OrderCreated');

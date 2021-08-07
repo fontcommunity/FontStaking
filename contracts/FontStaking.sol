@@ -766,9 +766,7 @@ contract FontStaking is AccessControl {
     receive() external payable {
         weth.deposit{value: msg.value}();
     }
-    function() public payable {
-        weth.deposit{value: msg.value}();
-    }
+    
 
     /**********************************************************************************************************/
     /************************************************  Rewards  **********************************************/

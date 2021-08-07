@@ -23,37 +23,42 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
 
     //Address to distribute the Exchange fees, usually staking contract 
-    address private feesDistributionAddress;
+    address private feesDistributionAddress; //Settings: yes
 
     //FONT ERC20 Address
-    address private FontERC20Address; //@deploy change this per network 
+    //Settings: yes
+    //@deploy: change this per network 
+    address private FontERC20Address; 
 
-    //Settings 
+    //Settings: yes
+    //Exchange commission
     uint256 private exchangeFees = 400; //1% = 100
 
     //Role for admin
     bytes32 private constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     //Maximum 50% royality allowed, 
+    //Settings: yes
     uint16 private maxRoyalityAllowed = 2500; //1% = 100, so 25% is max royality
 
     struct NFT {
-        uint256 orderID; //Current Order ID
+        uint256 orderID; //Current Order ID, 0 = not in order 
         uint16 royality; //Royality %. 1% = 100
         uint8 status;//check if the NFT is under contract custudy: 0 not exists, 1 under custody, 2 went out of contract
         address owner; // current owner of this nft
-        address creator; // Royality receiver or initial owner in this excange, no need to be original creator of this nft
+        address creator; // Royality receiver or initial owner in this NFT, no need to be original creator of this nft
     }
+    //List of NFTs
     mapping (uint256 => NFT) private NFTs;
 
-    //real creator of the font who is eligible to mint 
+    //real creator of the font who is eligible to mint the NFT, able to set and edit by admin, no use once it minted 
     mapping (uint256 => address) public OriginalNFTCreators;
 
     struct Order {
         uint256 nft; //NFT ID [f]
-        uint256 price; //price for whole NFT, of acceptable price if its auction [f]
+        uint256 price; //price for whole NFT, or acceptable price if its auction [f]
         uint256 minPrice; //Min price the bidding starts with [f]
-        uint256 highestBidID; //Highest bid id. 
+        uint256 highestBidID; //Highest bid ID if order is Auction
         
         uint16 referral; //Affiliate commission percentage
         uint8 status; //Order status : 1/open, 2/filled, 3/cancelled
@@ -63,37 +68,41 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         address seller; //current owner of this nft         
         address buyer; //new owner who bought this 
     }    
-    mapping (uint256 => Order) private OrderBook;
-
+    //Real order book
+    mapping (uint256 => Order) private OrderBook; 
+    //Order ID counter
+    uint256 private OrderID = 1;
 
     //Bidding item stored here. 
     struct Bid {
-        uint256 orderID;
-        uint256 offer;
+        uint256 orderID; //ID of the order 
+        uint256 offer; //Offer set be the bidder 
         //uint256 timestamp;
         uint8 status; //Order status : 1/open, 2/filled, 3/cancelled
-        address bidder;
+        address bidder; //Address of the bidder
         address referral; //referral address
         
     }
     mapping (uint256 => Bid) private Bids;
-    //Bids per auction order 
+    
+    //Bids per order 
     mapping (uint256 => uint256[]) private AuctionBids;
+    //Bid id counter
     uint256 private BidID = 1;    
 
-    //Payment Tokens 
+    //Payment Tokens, ERC20 contract address
     mapping (address => bool) private paymentTokens;
         
-    //Referral fees earned per user per token, subject to reset on claim 
+    //Referral fees earned by user per token, subject to reset on claim 
     mapping (address => mapping(address => uint256)) private ReferralFees;
 
-    //Commission fees earned by exchange, per token so for, subject to reset on claim
+    //Commission fees earned by exchange, per token, subject to reset on withdrawan
     mapping (address => uint256) private commissionFees;
 
-    //Font Rewards for buyers and selles
+    //Font Rewards for buyers. Keep it only to buyers, no reward for sellers.
     mapping (address => uint256) private FontRewards;
     
-    //Font rewards per token 
+    //Font rewards per token, this is set by admin later by oracle, make sure it should be using pull method  
     mapping (address => uint256) private FontRewardPerToken;
 
     //Reward Withdrawal pauasable
@@ -102,48 +111,56 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     //Orders per user
     mapping (address => uint256[]) private UserOrders;
 
-    uint256 private OrderID = 1;
-
-
 
     //Constructors
     constructor(address _FontERC20Address, address _feesDistributionAddress) ERC721("Font NFT", "FONT"){
-        _setupRole(ADMIN_ROLE, msg.sender); // Assign admin role to contract creator
-        
+        //Assign admin role to contract creator
+        _setupRole(ADMIN_ROLE, msg.sender); 
+        //Set FONT ERC20 address
         FontERC20Address = _FontERC20Address;
-
+        //Fees distribution address, contract address
         feesDistributionAddress = _feesDistributionAddress;
-
-        //Add ETH as payment token
+        //Add ETH as payment token, @todo test eth payment
         paymentTokens[address(0)] = true;
     }    
 
     //Mint the NFT and transfer to minter
     function safeMint(uint256 nft, uint16 royality) external {
-        require(
+        require (
+            //Only the real owner can mint the NFT
             OriginalNFTCreators[nft] == msg.sender
+            //Royality should not cross the maximum allowed
             && royality < maxRoyalityAllowed, "D");
-
+        //Set the NFT status, mint will move the NFT to owner wallet, so status is 2
         NFTs[nft].status = 2;
+        //Set the owner of this NFT to minter 
         NFTs[nft].owner = msg.sender;
+        //Set the creator of this NFT to minter 
         NFTs[nft].creator = msg.sender;
+        //Set the royality fees 
         NFTs[nft].royality = royality;
-
+        //Mint now
         _safeMint(msg.sender, nft);
     }
     
     //Mint the NFT and transfer to address, can be used by admin 
     function safeMintTo(address to, uint256 nft, uint16 royality) external {
         require(
+            //Admin can mint the NFT on behalf of Real owner, gas is on admin, because many admins 
             hasRole(ADMIN_ROLE, msg.sender) 
+            //Make sure the NFT belongs to the creator
             && OriginalNFTCreators[nft] == to 
+            //Royality should not cross the limit 
             && royality < maxRoyalityAllowed, "D");
-
+        //Set the NFT status, mint will move the NFT to owner wallet, so status is 2
         NFTs[nft].status = 2;
+        //Mint the NFT to the owner 
         NFTs[nft].owner = to;
-        NFTs[nft].creator = to;      
+        //Mint the NFT to creator
+        NFTs[nft].creator = to;  
+        //Set the royality     
         NFTs[nft].royality = royality;
-
+        //Mint now
         _safeMint(to, nft);        
     }
 
@@ -152,20 +169,26 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     function safeMintAndList(uint256 nft, uint256 price, uint256 minPrice, uint16 royality, uint16 referral, address token, bool auction) external {
 
         require((
+            //Only real creator of the font can mint it
             OriginalNFTCreators[nft] == msg.sender
+            //Make sure the payment token is avaliable and active 
             && paymentTokens[token]
+            //Royality should be in allowed limit 
             && royality < maxRoyalityAllowed
             ), "D");
-
+        //Auction order have different need 
         if(auction) {
-            require(minPrice > 0, "MP"); //minPrice should be above 0
+            require(minPrice > 0 && minPrice < price, "MP"); //minPrice should be above 0
         }
-        //Create the NFT 
+        //The minter is the creator 
         NFTs[nft].creator = msg.sender;
+        //Minter is the owner
         NFTs[nft].owner = msg.sender;
+        //Royality for this NFT 
         NFTs[nft].royality = royality;
+        //NFT is under contract custody, so cheers. 
         NFTs[nft].status = 1;
-
+        //Create order
         uint256 _order_id = _orderCreate(nft, price, minPrice, referral, token, auction);
 
         _safeMint(address(this), nft);
@@ -586,19 +609,15 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     /***************************** Admin settings ****************************/
     /*************************************************************************/
 
-
-    function adminEditPaymentToken(address _address, bool _status) external {
+    event EditedPaymentTokens(address  token, bool status, uint256 miningReward);
+    function adminEditPaymentToken(address _address, bool _status, uint256 _rewardAmount) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "D");
         paymentTokens[_address] = _status;         
+        if(_rewardAmount > 0) {
+            FontRewardPerToken[_address] = _rewardAmount;
+        }
+        emit EditedPaymentTokens(_address, _status, _rewardAmount);
     }
-
-    event UpdatedFontRewardsPerTOken(address token, uint256 amount);
-    function adminSetFontRewards(address _address, uint256 _amount) external {
-        require(hasRole(ADMIN_ROLE, msg.sender), "D");
-        FontRewardPerToken[_address] = _amount;
-        emit UpdatedFontRewardsPerTOken(_address, _amount);
-    }
-
     
 
     //Admin can withdraw fees to fees distribution address
@@ -624,12 +643,17 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
     event UserAddedBulk(uint256);
     function mapAddUserBulk(address[] calldata _address, uint256[] calldata _nft) external {
+        //Only admin can add this
         require(hasRole(ADMIN_ROLE, msg.sender), "D");
+        //Data length check
         require(_address.length == _nft.length, "Mm");
 
         for(uint16 i = 0; i < _address.length; i++) {
+            //NFT should not mapped already by admin
             require(OriginalNFTCreators[_nft[i]] == address(0), 'X');
+            //Address should not be 0
             require(_address[i] != address(0), 'AD');
+            //Set the data
             OriginalNFTCreators[_nft[i]] = _address[i];
         }
         emit UserAddedBulk(_address.length);
@@ -637,10 +661,12 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
     event UserEdited(address, uint256);
     function mapEditUser(address _address, uint256 _nft) external {
-
         require((
+            //Only Admin can edit it
             hasRole(ADMIN_ROLE, msg.sender)
+            //NFT should exist in map
             && OriginalNFTCreators[_nft] != address(0)
+            //NFT id should above 0
             && _nft > 0
         ), 'D');
 
@@ -800,13 +826,9 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         }
     }
 
-
-
     function onERC721Received(address, address, uint256, bytes memory) public virtual override returns (bytes4) {
         return this.onERC721Received.selector;
     }
-
-
 
 }
 
