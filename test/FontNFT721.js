@@ -25,6 +25,8 @@ describe("NFT Non ETH", function() {
   let addrs;
 
 
+  let provider;
+
   const Mn = 1000000;
   const Bn = 1000000000;
   const dec18zerosStr = "000000000000000000";
@@ -51,7 +53,8 @@ describe("NFT Non ETH", function() {
   //Deploy the token 
   before(async function () {
 
-    
+    provider = ethers.provider;
+
 
     [owner, addr1, addr2, addr3, addr4, addr5, addr6, addr7, addr8, ...addrs] = await ethers.getSigners(25);
 
@@ -208,10 +211,10 @@ describe("NFT Non ETH", function() {
         
         let anOrder = await exchange.connect(addr3).viewOrder(3);
 
-        var Earnings = await exchange.connect(addr1).viewReferralEarnings(addr4.address, ptUSDA.address);
+        var Earnings = await exchange.connect(addr1).viewEarnings(addr4.address, ptUSDA.address);
         await expect(Earnings.toString()).to.equal("4000000");
 
-        await exchange.connect(addr1).viewReferralEarnings(addr4.address, ptUSDA.address);
+        await exchange.connect(addr1).viewEarnings(addr4.address, ptUSDA.address);
         
         await exchange.connect(owner).withdrawFees(ptUSDA.address);
         var StakingAddressBalance = await ptUSDA.balanceOf(StakingAddress);
@@ -235,36 +238,63 @@ describe("NFT Non ETH", function() {
     });            
 
     it("Owner should able to create a Spot order with ETH", async function () {
-        await expect(exchange.connect(addr3).safeMintAndList(5, "1" + dec18zerosStr, 0, 100, 200, ZERO_ADDRESS, false)).to.emit(exchange, 'OrderCreated');
+        await expect(exchange.connect(addr3).safeMintAndList(5, "1" + dec18zerosStr, 0, 400, 400, ZERO_ADDRESS, false)).to.emit(exchange, 'OrderCreated');
         let anOrder = await exchange.connect(addr3).viewOrder(4);
         LogOrder(anOrder);
     });
 
     it("Anyone should able to buy a Spot order With ETH", async function () {
-        await expect(exchange.connect(addr1).orderBuy(4, ZERO_ADDRESS, false)).to.emit(exchange, 'OrderBought');
+
+        let anOrder = await exchange.connect(addr3).viewOrder(4);
+
+        const transactionObject = {
+            from: addr1.address,
+            to: exchange.address,
+            value:anOrder.price.toString(),// web3.utils.toWei(anOrder.price.toString(), 'wei'),
+        };        
+
+        balance = await provider.getBalance(addr1.address);
+        console.log("Balance of Addr1", balance.div(10**14).toString()); // 0
+        balance = await provider.getBalance(exchange.address);
+        console.log("Balance of exchange", balance.div(10**14).toString()); // 0
+        balance = await provider.getBalance(addr3.address);
+        console.log("Balance of addr3", balance.div(10**14).toString()); // 0
+
+
+
+        await expect(exchange.connect(addr1).orderBuy(4, addr4.address, false, { value: anOrder.price.toString() })).to.emit(exchange, 'OrderBought');
+
+
+        /*
+        exchange.connect(addr1).orderBuy.sendTransaction(4, ZERO_ADDRESS, false, transactionObject, function (error, result){ // do something with error checking/result here });
+            if (!error) {
+                console.log(result.name);
+                console.log(result.dna);
+            }
+            else {
+                console.log(error);
+            }
+        });
+        */
         
-        let anOrder = await exchange.connect(addr3).viewOrder(3);
+        anOrder = await exchange.connect(addr3).viewOrder(4);
+        //LogOrder(anOrder);
 
-        var Earnings = await exchange.connect(addr1).viewReferralEarnings(addr4.address, ptUSDA.address);
-        await expect(Earnings.toString()).to.equal("4000000");
+        balance = await provider.getBalance(addr1.address);
+        console.log("Balance of Addr1", balance.div(10**14).toString()); // 0
 
-        await exchange.connect(addr1).viewReferralEarnings(addr4.address, ptUSDA.address);
+        balance = await provider.getBalance(exchange.address);
+        console.log("Balance of exchange", balance.div(10**14).toString()); // 0      
         
-        await exchange.connect(owner).withdrawFees(ptUSDA.address);
-        var StakingAddressBalance = await ptUSDA.balanceOf(StakingAddress);
-        await expect(StakingAddressBalance.toString()).to.equal("3200000");
-
-        //console.log("StakingAddressBalance", StakingAddressBalance.toString());
-
-        var FontRewards = await exchange.connect(addr1).viewFontRewards(addr1.address);
-        console.log("FontRewards", FontRewards.toString());
+        balance = await provider.getBalance(addr3.address);
+        console.log("Balance of addr3", balance.div(10**14).toString()); // 0        
 
     });          
     
     
 
 
-    let send = web3.eth.sendTransaction({from:eth.coinbase,to:contract_address, value:web3.toWei(0.05, "ether")});
+    //let send = web3.eth.sendTransaction({from:eth.coinbase,to:contract_address, value:web3.toWei(0.05, "ether")});
 
     
 

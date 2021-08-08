@@ -41,6 +41,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     //Settings: yes
     uint16 private maxRoyalityAllowed = 2500; //1% = 100, so 25% is max royality
 
+
     struct NFT {
         uint256 orderID; //Current Order ID, 0 = not in order 
         uint16 royality; //Royality %. 1% = 100
@@ -94,7 +95,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     mapping (address => bool) private paymentTokens;
         
     //Referral fees earned by user per token, subject to reset on claim 
-    mapping (address => mapping(address => uint256)) private ReferralFees;
+    mapping (address => mapping(address => uint256)) private Earnings;
 
     //Commission fees earned by exchange, per token, subject to reset on withdrawan
     mapping (address => uint256) private commissionFees;
@@ -487,7 +488,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         }
 
         //Distribute Money and distribute font
-        _distributePayment(Bids[_bid_id].offer, OrderBook[Bids[_bid_id].orderID].referral, OrderBook[Bids[_bid_id].orderID].token, Bids[_bid_id].referral,  OrderBook[Bids[_bid_id].orderID].seller, Bids[_bid_id].bidder);
+        _distributePayment(Bids[_bid_id].offer, OrderBook[Bids[_bid_id].orderID].nft, OrderBook[Bids[_bid_id].orderID].referral, OrderBook[Bids[_bid_id].orderID].token, Bids[_bid_id].referral,  OrderBook[Bids[_bid_id].orderID].seller, Bids[_bid_id].bidder);
 
         //emit the event 
         emit OrderBidApproved(_bid_id);
@@ -552,6 +553,8 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
             && OrderBook[_order_id].token == address(0)
             //Only for Live NFT
             && NFTs[OrderBook[_order_id].nft].status == 1
+            //Order type should not be auction.
+            && !OrderBook[_order_id].auction
             // Only for live order
             && OrderBook[_order_id].status == 1
         ), 'D');
@@ -573,7 +576,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
             safeTransferFrom(address(this), msg.sender, OrderBook[_order_id].nft, "");   
         }
 
-        _distributePayment(OrderBook[_order_id].price, OrderBook[_order_id].referral, OrderBook[_order_id].token, _ref,  OrderBook[_order_id].seller, msg.sender);
+        _distributePayment(OrderBook[_order_id].price, OrderBook[_order_id].nft, OrderBook[_order_id].referral, OrderBook[_order_id].token, _ref,  OrderBook[_order_id].seller, msg.sender);
         //@todo emit the event 
         emit OrderBought(_order_id);
         
@@ -711,8 +714,8 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
         return paymentTokens[_token];
     }
 
-    function viewReferralEarnings(address _user, address _token) external view returns (uint256) {
-        return ReferralFees[_user][_token];
+    function viewEarnings(address _user, address _token) external view returns (uint256) {
+        return Earnings[_user][_token];
     }
 
     function viewFontRewards(address _user) external view returns (uint256) {
@@ -728,19 +731,18 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     /********************************** Claims *******************************/
     /*************************************************************************/    
     
-    //Claim ReferralFees 
+    //Claim Referral Fees or royality fees
     event EarningsClaimed(address, address, uint256);
-    function claimReferralEarnings(address _token) external {
+    function claimEarnings(address _token) external {
         //Claimer should have enough balance
-        require(ReferralFees[msg.sender][_token] > 0, "A");
-        uint256 _amount = ReferralFees[msg.sender][_token];
-        ReferralFees[msg.sender][_token] = 0;
+        require(Earnings[msg.sender][_token] > 0, "A");
+        uint256 _amount = Earnings[msg.sender][_token];
+        Earnings[msg.sender][_token] = 0;
         //Send money
         _sendMoney(msg.sender, _amount, _token);
         emit EarningsClaimed(msg.sender, _token, _amount);
     }
 
-    
 
     //Font rewards from mining
     event RewardsClaimed(address, uint256);
@@ -784,7 +786,7 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
 
 
     //Take the order payment from buyer, distribute the money to refferal commisions and exchange commission fees and to sellers
-    function _distributePayment(uint256 _amount, uint256 _refCommission, address _token, address _refAddress, address _seller, address _buyer) internal {
+    function _distributePayment(uint256 _amount, uint256 nft, uint256 _refCommission, address _token, address _refAddress, address _seller, address _buyer) internal {
         
         uint256 _fees = 0;
         uint256 _tmp = 0;
@@ -805,9 +807,21 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
             //Calculate the referral commission for the amount 
             _tmp = (_amount * _refCommission) / (10**4);
             //Add commission fees to referrer balance 
-            ReferralFees[_refAddress][_token] += _tmp;
+            Earnings[_refAddress][_token] += _tmp;
             //Add Referral fess to total fees 
             _fees += _tmp;
+            _tmp = 0;
+        }
+
+        //Take the Royality, if royality is above 0 and add it to royality collections 
+        if(NFTs[nft].royality > 0) {
+            //Calculate the royality in amount
+            _tmp = (_amount * NFTs[nft].royality) / (10**4);
+            //Add Royality fees to referrer balance 
+            Earnings[OriginalNFTCreators[nft]][_token] += _tmp;
+            //Add Referral fess to total fees 
+            _fees += _tmp;            
+            _tmp = 0;
         }
 
         //Font Rewards only of amount is greater than 0 and token have reward program
@@ -840,12 +854,34 @@ contract FontNFT721 is Context, ReentrancyGuard, ERC721, ERC721URIStorage, ERC72
     //@todo safety check
     function _receiveMoney(address from, address to, address token, uint256 amount) internal {
         if(token == address(0)) {
-            require(msg.value >= amount, "ETH");
+            require(msg.value >= amount, uint2str(msg.value));
         }
         else {
             IERC20(token).safeTransferFrom(from, to, amount);
         }
     }
+
+function uint2str(uint _i) internal pure returns (string memory _uintAsString) {
+        if (_i == 0) {
+            return "0";
+        }
+        uint j = _i;
+        uint len;
+        while (j != 0) {
+            len++;
+            j /= 10;
+        }
+        bytes memory bstr = new bytes(len);
+        uint k = len;
+        while (_i != 0) {
+            k = k-1;
+            uint8 temp = (48 + uint8(_i - _i / 10 * 10));
+            bytes1 b1 = bytes1(temp);
+            bstr[k] = b1;
+            _i /= 10;
+        }
+        return string(bstr);
+    }    
 
     function onERC721Received(address, address, uint256, bytes memory) public virtual override returns (bytes4) {
         return this.onERC721Received.selector;

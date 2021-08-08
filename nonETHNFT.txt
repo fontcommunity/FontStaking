@@ -45,6 +45,8 @@ Full oracle implementation for font rewards
 
 Able to buy and list orders 
 
+detuct the royality from payment and add it to rewards or seperate variables
+
 ################################################################################
 #############################  Test cases to cover  ############################
 ################################################################################
