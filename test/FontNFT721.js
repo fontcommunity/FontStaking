@@ -27,6 +27,7 @@ describe("NFT Non ETH", function() {
 
   const Mn = 1000000;
   const Bn = 1000000000;
+  const dec18zerosStr = "000000000000000000";
 
   let fontNFTTokens;
   let exchange;
@@ -137,7 +138,6 @@ describe("NFT Non ETH", function() {
     it("Non Owner should not able to do move out NFT", async function () {
         await expect(exchange.connect(addr2).moveNFTOut(5)).to.be.revertedWith('D');
     });    
-
     
     it("Owner should able to do bring the NFT under contract custody", async function () {
         var NFT = await exchange.connect(addr3).viewNFT(1);
@@ -207,7 +207,6 @@ describe("NFT Non ETH", function() {
         await expect(exchange.connect(addr1).orderBuy(3, addr4.address, false)).to.emit(exchange, 'OrderBought');
         
         let anOrder = await exchange.connect(addr3).viewOrder(3);
-    
 
         var Earnings = await exchange.connect(addr1).viewReferralEarnings(addr4.address, ptUSDA.address);
         await expect(Earnings.toString()).to.equal("4000000");
@@ -219,13 +218,9 @@ describe("NFT Non ETH", function() {
         await expect(StakingAddressBalance.toString()).to.equal("3200000");
 
         //console.log("StakingAddressBalance", StakingAddressBalance.toString());
-        
 
         var FontRewards = await exchange.connect(addr1).viewFontRewards(addr1.address);
         console.log("FontRewards", FontRewards.toString());
-
-
-        
 
     });          
     
@@ -238,6 +233,41 @@ describe("NFT Non ETH", function() {
     it("Owner should able to cancel a Spot order", async function () {
         //await expect(exchange.connect(addr3).orderCancel(3)).to.emit(exchange, 'OrderCanceled');
     });            
+
+    it("Owner should able to create a Spot order with ETH", async function () {
+        await expect(exchange.connect(addr3).safeMintAndList(5, "1" + dec18zerosStr, 0, 100, 200, ZERO_ADDRESS, false)).to.emit(exchange, 'OrderCreated');
+        let anOrder = await exchange.connect(addr3).viewOrder(4);
+        LogOrder(anOrder);
+    });
+
+    it("Anyone should able to buy a Spot order With ETH", async function () {
+        await expect(exchange.connect(addr1).orderBuy(4, ZERO_ADDRESS, false)).to.emit(exchange, 'OrderBought');
+        
+        let anOrder = await exchange.connect(addr3).viewOrder(3);
+
+        var Earnings = await exchange.connect(addr1).viewReferralEarnings(addr4.address, ptUSDA.address);
+        await expect(Earnings.toString()).to.equal("4000000");
+
+        await exchange.connect(addr1).viewReferralEarnings(addr4.address, ptUSDA.address);
+        
+        await exchange.connect(owner).withdrawFees(ptUSDA.address);
+        var StakingAddressBalance = await ptUSDA.balanceOf(StakingAddress);
+        await expect(StakingAddressBalance.toString()).to.equal("3200000");
+
+        //console.log("StakingAddressBalance", StakingAddressBalance.toString());
+
+        var FontRewards = await exchange.connect(addr1).viewFontRewards(addr1.address);
+        console.log("FontRewards", FontRewards.toString());
+
+    });          
+    
+    
+
+
+    let send = web3.eth.sendTransaction({from:eth.coinbase,to:contract_address, value:web3.toWei(0.05, "ether")});
+
+    
+
 
   });
 

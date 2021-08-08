@@ -43,6 +43,7 @@ _withdrawNFT
 
 Full oracle implementation for font rewards
 
+Able to buy and list orders 
 
 ################################################################################
 #############################  Test cases to cover  ############################
