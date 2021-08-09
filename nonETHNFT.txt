@@ -36,16 +36,13 @@ SendMoney()
 ############################  Todo important stuffs  ###########################
 ################################################################################
 
-_withdrawNFT
-    Keep it under contract custody     
 
 2) Have a variable to unlock the reward, only during unpass, rewards can be withdrawan, To stop any vunurabioity 
 
 Full oracle implementation for font rewards
 
-Able to buy and list orders 
 
-detuct the royality from payment and add it to rewards or seperate variables
+
 
 ################################################################################
 #############################  Test cases to cover  ############################
@@ -66,3 +63,10 @@ Can mint and list with order in single txn
 
 Can able to edit royality only if owner as well as creator are same 
 
+merge FontRewards into earnings 
+
+
+
+How to track current live bids in easy way is keep the order id in middle 
+
+order id
