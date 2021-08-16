@@ -22,38 +22,50 @@ What if people witdraw tokens by one ERC after one
 
 make it claimable 
 
+====================================================================================================================================
+===================================================  LP Stake BNB ==================================================================
+====================================================================================================================================
+
+Lock your LP tokens
+Note the FONT / BNB (better programatically), abilit
+Lock it for 6 months
+No reward for withrawing before due date + 4% burned as tax
+witdraing after 3 months 
+    24% in Font 
+    Cover the impermenet loss in font. 
+
+
+When locking the LP 
+query the factory for total supply
+
+    amount 
+    InitialFont
+    InitialBNB
+    timeLocked
+    Duration
+    Status
+    finalFont
+    fintalBNB
+    fontReward
+
+    getRe
+
+
+User actions 
+    Stake
+    unstake
+    Claim Rewards 
+
+Admin Settings  
+    Tax 
+    time
+    reward settings 
+    
+
 ----------------- Test Cases ----------------
-stake
-unstake
-getStakeByID
-pauseStaking
-unpauseStaking
-setTaxFees
-setMinStakeRequired
-kickStake
-excludeAccount
-includeAccount
-NewRewardToken
-EditRewardToken
-burnFont
-withdrawErc20
-makeAdmin
-revokeAdmin
-getStakeByUser
-getStakeidsByUser
-getCurrentRewardShare
-isRewardTokenExists
-calculateTax
-takeShapshot
-DistributeRewards
-claimRewards
 
 
-Need test font, 
-    test erc20s 
-    payment erc20s 
-    addresses 
-    limited time schedule 
+
 
 
 

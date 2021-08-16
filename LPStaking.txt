@@ -1,0 +1,6 @@
+Test in Rinkby 
+    Create Font 
+    Create Weth, font pair 
+    set the low price 
+    test the staking
+    

@@ -1,12 +1,12 @@
-
 // SPDX-License-Identifier: MIT
 // Author: https://twitter.com/adalquardz
-
-pragma solidity ^0.8.0;
 
 // Sources flattened with hardhat v2.4.3 https://hardhat.org
 
 // File @openzeppelin/contracts/utils/Context.sol@v4.2.0
+
+
+pragma solidity ^0.8.0;
 
 /*
  * @dev Provides information about the current execution context, including the
@@ -30,6 +30,7 @@ abstract contract Context {
 
 
 // File @openzeppelin/contracts/utils/math/SafeMath.sol@v4.2.0
+
 
 
 // CAUTION
@@ -258,6 +259,7 @@ library SafeMath {
 
 // File @openzeppelin/contracts/utils/Strings.sol@v4.2.0
 
+
 /**
  * @dev String operations.
  */
@@ -324,6 +326,8 @@ library Strings {
 
 // File @openzeppelin/contracts/utils/introspection/IERC165.sol@v4.2.0
 
+
+
 /**
  * @dev Interface of the ERC165 standard, as defined in the
  * https://eips.ethereum.org/EIPS/eip-165[EIP].
@@ -347,6 +351,7 @@ interface IERC165 {
 
 
 // File @openzeppelin/contracts/utils/introspection/ERC165.sol@v4.2.0
+
 
 /**
  * @dev Implementation of the {IERC165} interface.
@@ -373,6 +378,8 @@ abstract contract ERC165 is IERC165 {
 
 
 // File @openzeppelin/contracts/access/AccessControl.sol@v4.2.0
+
+
 
 /**
  * @dev External interface of AccessControl declared to support ERC165 detection.
@@ -620,10 +627,7 @@ abstract contract AccessControl is Context, IAccessControl, ERC165 {
 
 // File contracts/FontStaking.sol
 
-
 //import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
-
 
 /**
  * @dev Interface of the ERC20 standard as defined in the EIP.
@@ -1382,7 +1386,7 @@ contract FontStaking is AccessControl {
     receive() external payable {
         weth.deposit{value: msg.value}();
     }
-
+    
 
     /**********************************************************************************************************/
     /************************************************  Rewards  **********************************************/
