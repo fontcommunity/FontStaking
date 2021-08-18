@@ -4,3 +4,8 @@ Test in Rinkby
     set the low price 
     test the staking
     
+
+
+
+Since font community going multichain, the first step is bootstraping liquidity for FONT/BNB pair in Pancakeswap. 
+FONT/BNP LP Staking is coming soon with minimum 30% APY.

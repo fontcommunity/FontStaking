@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 
 
 interface IUniswapV2Pair {
-    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+    function getReserves() external view returns (uint256 reserve0, uint256 reserve1, uint32 blockTimestampLast);
     function totalSupply() external view returns (uint);
 
 }
@@ -503,11 +503,6 @@ contract FontBSCLPStaking is AccessControl {
     mapping(address => uint256[]) private userStakeIds;
 
 
-
-    //User reward balance claimable
-    mapping (address => mapping(address => uint256)) public UserRewardBalance;
-
-
     constructor(address _font_token_address, address _uni_pair) {
         //Start the staking counter with 1
         stakeCounter = 1;
@@ -519,6 +514,10 @@ contract FontBSCLPStaking is AccessControl {
         //Pancakeswap Pair Address with safetychecks
         PAIR_ERC20 = IERC20(_uni_pair); 
 
+        LP_token_address = _uni_pair;
+
+        FONT_token_address = _font_token_address;
+
         //Owner address
         ownerAddress = msg.sender;
         //Staking is not paused initially
@@ -528,7 +527,7 @@ contract FontBSCLPStaking is AccessControl {
     }
 
     //@done
-    event LogStake(address _address, uint256 _stake_id, uint256 amount); 
+    event Staked(address _address, uint256 _stake_id, uint256 amount); 
     /**
     * @dev stake a specific amount to a token
     * @param _amount the amount to be staked
@@ -593,7 +592,7 @@ contract FontBSCLPStaking is AccessControl {
         //safe transfer from 
         PAIR_ERC20.safeTransferFrom(msg.sender, address(this), _amount);
         
-        emit LogStake(msg.sender, _stake_id,  _amount);
+        emit Staked(msg.sender, _stake_id,  _amount);
     }
     
     //Unstake the font Token by stake id
@@ -704,13 +703,17 @@ contract FontBSCLPStaking is AccessControl {
 
         require(_totalSuppy >= _LPamount && _LPamount > 0);
         
-        uint112 reserve_font; 
-        uint112 reserve_bnb; 
+        uint256 reserve_font; 
+        uint256 reserve_bnb; 
 
         //get the total reserve
         (reserve_font, reserve_bnb,) = UNI_PAIR_V2.getReserves();
 
         return ((reserve_font * _LPamount) / _totalSuppy, (reserve_bnb * _LPamount) / _totalSuppy);
+    }
+
+    function getUserShare(uint256 _LPamount) external view returns (uint256, uint256) {
+        return _getUserShare(_LPamount);
     }
 
     /**********************************************************************************************************/
