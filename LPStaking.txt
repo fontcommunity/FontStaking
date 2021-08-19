@@ -9,3 +9,9 @@ Test in Rinkby
 
 Since font community going multichain, the first step is bootstraping liquidity for FONT/BNB pair in Pancakeswap. 
 FONT/BNP LP Staking is coming soon with minimum 30% APY.
+
+Initial 819080
+
+final reward 91591
+50% CIL 90783
+APY = 808 for 1 day 

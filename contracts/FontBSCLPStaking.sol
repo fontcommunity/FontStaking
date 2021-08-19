@@ -431,17 +431,19 @@ contract FontBSCLPStaking is AccessControl {
     uint16 coverImpermanentLoss = 0;
 
     // 1 = 0.01% for premature unstake
-    uint16 public taxFee = 200; 
+    uint16 public taxFee = 100; 
 
     address ownerAddress; //Main admin of this contract
 
     
     //token address of the font
     //ETH Rinkeby 0x17225e68D3761af8fbDA959367B788cC861943Df
-    address FONT_token_address = 0x17225e68D3761af8fbDA959367B788cC861943Df; 
+    //BSC Mainnet 0x3053ad3b31600074e9A90440770f78D5e8Fc5A54
+    address FONT_token_address = 0x3053ad3b31600074e9A90440770f78D5e8Fc5A54; 
     //LP Token Address BNB-FONT
     //Uni Rinkeby 0x4c2dFBf6b7d258969A632f891301532C19E9D96D
-    address LP_token_address = 0x4C25Bdf026Ea05F32713F00f73Ca55857Fbf6342; 
+    //Pankcakeswap Mainnet Cake-LP 0x2dc525454614858f3CA9e2F4f8E4Ee8FddF9c80e
+    address LP_token_address = 0x2dc525454614858f3CA9e2F4f8E4Ee8FddF9c80e; 
     
 
     uint32 public minStakeTime = 7776000; //90 days in second
