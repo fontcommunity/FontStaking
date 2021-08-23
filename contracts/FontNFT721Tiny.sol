@@ -22,10 +22,11 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
 
 
     //Address to distribute the Exchange fees, usually staking contract 
-    address private feesDistributionAddress; //Settings: yes
+    //@Settings: yes
+    address private feesDistributionAddress; 
 
     //FONT ERC20 Address
-    //Settings: yes
+    //@Settings: yes
     //@deploy: change this per network 
     address private FontERC20Address; 
 
@@ -37,28 +38,26 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     bytes32 private constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     //Maximum 50% royality allowed, 
-    //Settings: yes
-    uint16 private maxRoyalityAllowed = 2500; //1% = 100, so 25% is max royality
+    //@Settings: no
+    uint16 private maxRoyalityAllowed = 5000; //1% = 100, so 25% is max royality
 
 
     struct NFT {
 
         bool auction; //If order id is auction or not 
         
-        uint16 royality; //Royality %. 1% = 100
-        uint16 referralCommission; //% of referral commission
-
         uint8 status;//check if the NFT is under contract custudy: 0 not exists, 1 under custody, 2 not under contract custody
+
+        uint16 royality; //Royality %. 1% = 100
+        uint16 referralCommission; //% of referral commission for current order
         
         address owner; // current owner of this nft when NFT is under custody 
-        address token; // Payment ERC20 token
+        address token; // Payment ERC20 token for current order 
 
-        uint256 orderID; //Current Order ID, 0 = not in order, this is needed for auction type orders 
+        uint256 orderID; //Current Order ID, 0 = not in order, this is needed for auction type orders but not needed for spot orders 
         uint256 price; //Current order price 
         uint256 minPrice; //min price if order is auction
         uint256 highestBidID; //Hisghed bid ID, if order is auction 
-        
-
         
     }
     //List of NFTs
@@ -71,11 +70,11 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
 
     //Bidding item stored here. 
     struct Bid {
-        uint256 orderID; //ID of the order 
-        uint256 offer; //Offer set be the bidder 
         uint8 status; //Order status : 1/open, 2/filled, 3/cancelled
         address bidder; //Address of the bidder
         address referral; //referral address
+        uint256 orderID; //ID of the order 
+        uint256 offer; //Offer set be the bidder         
     }
     mapping (uint256 => Bid) private Bids;
     
@@ -114,8 +113,10 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         FontERC20Address = _FontERC20Address;
         //Fees distribution address, contract address
         feesDistributionAddress = _feesDistributionAddress;
-        //Add ETH as payment token, @todo test eth payment
+        //Add ETH as payment token
         paymentTokens[address(0)] = true;
+        //Add FONT as Payment Token 
+        paymentTokens[_FontERC20Address] = true;
     }    
 
     //Mint the NFT and transfer to minter
@@ -123,7 +124,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         _minter(msg.sender, nft, royality);
     }
     
-    //Mint the NFT and transfer to address, can be used by admin 
+    //Mint the NFT and transfer to address, should be used by admin 
     function safeMintTo(address to, uint256 nft, uint16 royality) external {
         //Admin can mint the NFT on behalf of Real owner, gas is on admin, because many admins 
         require(hasRole(ADMIN_ROLE, msg.sender), "D");
@@ -149,18 +150,19 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     }
 
     //Mint an NFT and create sell order with price, royality and commssion
+    //Either Admin or real owner can mint it
     event OrderCreated(uint256);
     function safeMintAndList(uint256 nft, uint256 price, uint256 minPrice, uint16 royality, uint16 referral, address token, bool auction) external {
 
         require((
             //Only real creator of the font can mint it
-            OriginalNFTCreators[nft] == msg.sender
+            (OriginalNFTCreators[nft] == msg.sender || hasRole(ADMIN_ROLE, msg.sender))
             //Royality should be in allowed limit 
             && royality < maxRoyalityAllowed
             ), "D");
 
-        //Minter is the owner
-        NFTs[nft].owner = msg.sender;
+        //Real owner is the owner
+        NFTs[nft].owner = OriginalNFTCreators[nft];
         //Royality for this NFT 
         NFTs[nft].royality = royality;
         //NFT is under contract custody, so cheers. 
@@ -173,11 +175,12 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         emit OrderCreated(OrderID);
     }
 
+    //@todo testing, check all the requirs, security check, change the status (like burned or to 0)
     function _burn(uint256 nft) internal override(ERC721, ERC721URIStorage) {
         
         require(
-            NFTs[nft].owner == msg.sender 
-            && NFTs[nft].status == 1, 'D'); //only the owner cum creator can burn it.
+            ownerOf(nft) == msg.sender || //only the owner 
+            (NFTs[nft].owner == msg.sender && NFTs[nft].status == 1), 'D'); //Only if nft is under custody can burn it
         super._burn(nft);
     }
 
@@ -194,6 +197,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     /*************************************************************************/    
     //Move NFT into contract
     function moveNFTin(uint256 nft) external {
+        //Only of NFT is already minted as well as not under custody of contract
         require(NFTs[nft].status == 2, 'NC');
         NFTs[nft].status = 1;
         NFTs[nft].owner = msg.sender;
@@ -312,8 +316,9 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
             NFTs[nft].minPrice = minPrice;
         }
 
-        //Token can be edited only for spot orders and auctions orders witout singe bid 
+        //Token can be edited only for spot orders and auctions orders witout single bid 
         if(!NFTs[nft].auction || NFTs[nft].highestBidID == 0) {
+            require(paymentTokens[token]);
             NFTs[nft].token = token;
         }
 
@@ -348,7 +353,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         emit OrderCanceled(nft);
     }
 
-    //Helper function to cancle the order
+    //Helper function to cancel the order
     //@done
     function _orderReset(uint256 nft) internal {
 
@@ -479,6 +484,35 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         emit BidCanceled(_bid_id);
     }
 
+    function _orderBidsCancelAll(uint256 nft, uint256 _except) internal returns (bool){
+        //@todo everything 
+        
+        require((
+            //make sure the order is live 
+            NFTs[nft].orderID > 0
+            //make sure the nft is under custody
+            && NFTs[nft].status == 1
+            //Only Auction type
+            && NFTs[nft].auction
+            //check if order have enough bids 
+            && AuctionBids[NFTs[nft].orderID].length > 0
+        ), 'D');
+
+        for(uint256 i = 0; i < AuctionBids[NFTs[nft].orderID].length; i++) {
+            if(Bids[AuctionBids[NFTs[nft].orderID][i]].status == 1 && AuctionBids[NFTs[nft].orderID][i] != _except) {
+                //Set the bit void
+                Bids[AuctionBids[NFTs[nft].orderID][i]].status = 3;
+                
+                //Send money
+                _sendMoney(Bids[AuctionBids[NFTs[nft].orderID][i]].bidder, Bids[AuctionBids[NFTs[nft].orderID][i]].offer, NFTs[nft].token);
+                //Or should i send the money, so others can withdraw?
+
+                delete Bids[AuctionBids[NFTs[nft].orderID][i]]; //@todo remove if this brings issue 
+            }
+        }
+        NFTs[nft].highestBidID = 0;
+        return true;
+    }
 
 
     //Buy the spot order. 
@@ -493,7 +527,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
             //Only of order is auction 
             && !NFTs[nft].auction), "D"); 
         
-        //Get money from buyer
+        //Get money from buyer and keep under contract custody
         _receiveMoney(msg.sender, NFTs[nft].token, NFTs[nft].price);
         //Buy the order, take money
         _orderBuy(nft, _ref, _withdrawNFT);
@@ -546,35 +580,6 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
 
 
 
-    function _orderBidsCancelAll(uint256 nft, uint256 _except) internal returns (bool){
-        //@todo everything 
-        
-        require((
-            //make sure the order is live 
-            NFTs[nft].orderID > 0
-            //make sure the nft is under custody
-            && NFTs[nft].status == 1
-            //Only Auction type
-            && NFTs[nft].auction
-            //check if order have enough bids 
-            && AuctionBids[NFTs[nft].orderID].length > 0
-        ), 'D');
-
-        for(uint256 i = 0; i < AuctionBids[NFTs[nft].orderID].length; i++) {
-            if(Bids[AuctionBids[NFTs[nft].orderID][i]].status == 1 && AuctionBids[NFTs[nft].orderID][i] != _except) {
-                //Set the bit void
-                Bids[AuctionBids[NFTs[nft].orderID][i]].status = 3;
-                
-                //Send money
-                _sendMoney(Bids[AuctionBids[NFTs[nft].orderID][i]].bidder, Bids[AuctionBids[NFTs[nft].orderID][i]].offer, NFTs[nft].token);
-                //Or should i send the money, so others can withdraw?
-
-                delete Bids[AuctionBids[NFTs[nft].orderID][i]]; //@todo remove if this brings issue 
-            }
-        }
-        NFTs[nft].highestBidID = 0;
-        return true;
-    }
 
 
     /*************************************************************************/
@@ -607,15 +612,15 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     }
 
     //All settings into single function 
-    function adminSettings(uint16 _maxRoyalityAllowed, uint256 _exchangeFees, address _feesDistributionAddress, address _FontERC20Address, bool _FontRewardPaused) external {
+    function adminSettings( uint256 _exchangeFees, address _feesDistributionAddress, address _FontERC20Address, bool _FontRewardPaused) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "D");
-        require(_maxRoyalityAllowed < 5000, "H");
+        //require(_maxRoyalityAllowed < 5000, "H");
         //Exchange fees
         exchangeFees = _exchangeFees;
         //Staking address for fee distribution
         feesDistributionAddress = _feesDistributionAddress;
         //Set the maxiumum royality allowd
-        maxRoyalityAllowed = _maxRoyalityAllowed;
+        //maxRoyalityAllowed = _maxRoyalityAllowed;
         //Set the $FONT ERC20 token address
         FontERC20Address = _FontERC20Address;
         //Set the font reward status 
@@ -695,6 +700,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     /*************************************************************************/    
     
     //Claim Referral Fees or royality fees
+    //@todo for ETH 
     event EarningsClaimed(address, address, uint256);
     function claimEarnings(address _token) external {
         //Claimer should have enough balance

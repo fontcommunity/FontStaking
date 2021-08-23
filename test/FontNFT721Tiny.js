@@ -3,7 +3,7 @@ const { BN, expectEvent, expectRevert, time, block } = require('@openzeppelin/te
 
 const _ = require("underscore");
 
-describe("NFT721 Tiny", function() {
+describe("FontNFT721Tiny", function() {
 
 
   let fontToken;
@@ -132,6 +132,16 @@ describe("NFT721 Tiny", function() {
         await expect(exchange.connect(addr3).safeMintAndList(4, 100*Mn, 10*Mn, 100, 200, ptUSDA.address, true)).to.emit(exchange, 'OrderCreated');
     });
 
+
+    it("Admin should able to do safeMintAndList on behalf of owner", async function () {
+        await expect(exchange.connect(owner).safeMintAndList(5, 100*Mn, 0, 100, 200, ptUSDA.address, false)).to.emit(exchange, 'OrderCreated');
+        var NFT = await exchange.connect(addr3).viewNFT(5);
+        await expect(NFT.owner).to.equal(addr3.address);
+        
+        //LogNFT(NFT);        
+    });
+
+        
     
 
   });
@@ -139,7 +149,7 @@ describe("NFT721 Tiny", function() {
   describe("Move NFTs", async function () {
 
     it("Non Owner should not able to do move out NFT", async function () {
-        await expect(exchange.connect(addr2).moveNFTOut(5)).to.be.revertedWith('D');
+        await expect(exchange.connect(addr2).moveNFTOut(6)).to.be.revertedWith('D');
     });    
     
     it("Owner should able to do bring the NFT under contract custody", async function () {
@@ -185,7 +195,7 @@ describe("NFT721 Tiny", function() {
         await expect(exchange.connect(addr3).orderCreate(2, 100*Mn, 0, 150, ptUSDA.address, false)).to.emit(exchange, 'OrderCreated');
         let anNFT = await exchange.connect(addr3).viewNFT(2);
         await expect(anNFT.referralCommission).to.equal(150);
-        await expect(anNFT.orderID).to.equal(3);
+        await expect(anNFT.orderID).to.equal(4);
         await expect(anNFT.owner).to.equal(addr3.address);
 
         //LogOrder(anOrder);
@@ -198,33 +208,73 @@ describe("NFT721 Tiny", function() {
     it("Owner should able to edit his Spot order", async function () {
         await expect(exchange.connect(addr3).orderEdit(2, 80*Mn, 0, 500, ptUSDA.address)).to.emit(exchange, 'OrderEdited');
         let anNFT = await exchange.connect(addr3).viewNFT(2);
-        LogNFT(anNFT);
         await expect(anNFT.referralCommission).to.equal(500);
-        await expect(anNFT.orderID).to.equal(3);
+        await expect(anNFT.orderID).to.equal(4);
         await expect(anNFT.token).to.equal(ptUSDA.address);
 
     });        
 
-    it("Anyone should able to buy a Spot order", async function () {
-        await ptUSDA.transfer(addr1.address, 1000*Mn);
-        await ptUSDA.connect(addr1).approve(exchange.address, 1000*Mn);
+    it("Should not able to buy a Non ETH Spot order with ETH", async function () {
+        let anNFT = await exchange.connect(addr5).viewNFT(2);
+        
+        
+        var ethValue = anNFT.price.toString();
+        
+        const transactionObject = {
+            from: addr3.address,
+            to: exchange.address,
+            value:ethValue,// web3.utils.toWei(anOrder.price.toString(), 'wei'),
+        };        
+
+
+
+        var initbalance = await provider.getBalance(exchange.address);
+      
+
+        await ptUSDA.transfer(addr5.address, 1000*Mn);
+        await ptUSDA.connect(addr5).approve(exchange.address, 1000*Mn);
+
+
+        await expect(exchange.connect(addr5).orderBuy(2, addr4.address, false, { value: ethValue })).to.emit(exchange, 'OrderBought');
+
+        var balance = await provider.getBalance(exchange.address);
+
+        
+
+        anNFT = await exchange.connect(addr5).viewNFT(2);
+        
+        await expect(anNFT.owner).to.equal(addr5.address);
+
+        await expect(balance.toString()).to.equal(ethValue);
+    });
+
+    it("New owner should able to create order", async function () {
+        await exchange.connect(owner).adminEditPaymentToken(ptUSDB.address, true, 50*Mn);
+        await expect(exchange.connect(addr5).orderCreate(2, 180*Mn, 0, 500, ptUSDB.address, false)).to.emit(exchange, 'OrderCreated');
+    });
+
+
+    it("Anyone should able to buy a Non ETH Spot order", async function () {
+        //Transfer the needed token to user wallet and approve it
+        await ptUSDB.transfer(addr1.address, 1000*Mn);
+        await ptUSDB.connect(addr1).approve(exchange.address, 1000*Mn);
         await expect(exchange.connect(addr1).orderBuy(2, addr4.address, false)).to.emit(exchange, 'OrderBought');
         
         let anOrder = await exchange.connect(addr3).viewNFT(2);
 
-        var Earnings = await exchange.connect(addr1).viewEarnings(addr4.address, ptUSDA.address);
-        await expect(Earnings.toString()).to.equal("4000000");
+        var referralCommission = await exchange.connect(addr1).viewEarnings(addr4.address, ptUSDB.address);
+        await expect(referralCommission.toString()).to.equal("9000000");
 
-        await exchange.connect(addr1).viewEarnings(addr4.address, ptUSDA.address);
         
-        await exchange.connect(owner).withdrawFees(ptUSDA.address);
-        var StakingAddressBalance = await ptUSDA.balanceOf(StakingAddress);
-        await expect(StakingAddressBalance.toString()).to.equal("3200000");
-
-        //console.log("StakingAddressBalance", StakingAddressBalance.toString());
+        await exchange.connect(owner).withdrawFees(ptUSDB.address);
+        var StakingAddressBalance = await ptUSDB.balanceOf(StakingAddress);
+        await expect(StakingAddressBalance.toString()).to.equal("7200000");
+        
 
         var FontRewards = await exchange.connect(addr1).viewFontRewards(addr1.address);
-        console.log("FontRewards", FontRewards.toString());
+        //console.log("FontRewards", FontRewards.toString());
+        await expect(FontRewards.toString()).to.equal("3600000000000000000");
+        
 
     });          
     
@@ -239,14 +289,14 @@ describe("NFT721 Tiny", function() {
     });            
 
     it("Owner should able to create a Spot order with ETH", async function () {
-        await expect(exchange.connect(addr3).safeMintAndList(5, "1" + dec18zerosStr, 0, 400, 400, ZERO_ADDRESS, false)).to.emit(exchange, 'OrderCreated');
-        let anNFT = await exchange.connect(addr3).viewNFT(5);
-        LogNFT(anNFT);
+        await expect(exchange.connect(addr3).safeMintAndList(6, "100" + dec18zerosStr, 0, 400, 400, ZERO_ADDRESS, false)).to.emit(exchange, 'OrderCreated');
+        let anNFT = await exchange.connect(addr3).viewNFT(6);
+        await expect(anNFT.token).to.equal(ZERO_ADDRESS);
     });
 
     it("Anyone should able to buy a Spot order With ETH", async function () {
 
-        let anOrder = await exchange.connect(addr3).viewNFT(5);
+        let anOrder = await exchange.connect(addr3).viewNFT(6);
 
         const transactionObject = {
             from: addr1.address,
@@ -254,41 +304,35 @@ describe("NFT721 Tiny", function() {
             value:anOrder.price.toString(),// web3.utils.toWei(anOrder.price.toString(), 'wei'),
         };        
 
-        balance = await provider.getBalance(addr1.address);
-        console.log("Balance of Addr1", balance.div(10**14).toString()); // 0
-        balance = await provider.getBalance(exchange.address);
-        console.log("Balance of exchange", balance.div(10**14).toString()); // 0
-        balance = await provider.getBalance(addr3.address);
-        console.log("Balance of addr3", balance.div(10**14).toString()); // 0
-
-
-
-        await expect(exchange.connect(addr1).orderBuy(5, addr4.address, false, { value: anOrder.price.toString() })).to.emit(exchange, 'OrderBought');
-
-
-        /*
-        exchange.connect(addr1).orderBuy.sendTransaction(4, ZERO_ADDRESS, false, transactionObject, function (error, result){ // do something with error checking/result here });
-            if (!error) {
-                console.log(result.name);
-                console.log(result.dna);
-            }
-            else {
-                console.log(error);
-            }
-        });
-        */
+        addr1balance = await provider.getBalance(addr1.address);
         
-        anOrder = await exchange.connect(addr3).viewNFT(4);
+        exchangebalance = await provider.getBalance(exchange.address);
+
+        addr3balance = await provider.getBalance(addr3.address);
+
+        addr4balance = await provider.getBalance(addr4.address);
+
+        await expect(exchange.connect(addr1).orderBuy(6, addr4.address, false, { value: anOrder.price.toString() })).to.emit(exchange, 'OrderBought');
+
+        
+        anOrder = await exchange.connect(addr3).viewNFT(6);
         //LogOrder(anOrder);
 
-        balance = await provider.getBalance(addr1.address);
-        console.log("Balance of Addr1", balance.div(10**14).toString()); // 0
+        addr1balance_1 = await provider.getBalance(addr1.address);
+        console.log("Balance of Addr1", parseInt(addr1balance.div(10**15).toString())/1000, parseInt(addr1balance_1.div(10**15).toString()) / 1000); // 0
 
-        balance = await provider.getBalance(exchange.address);
-        console.log("Balance of exchange", balance.div(10**14).toString()); // 0      
+        exchangebalance_1 = await provider.getBalance(exchange.address);
+        console.log("Balance of exchange", exchangebalance.div(10**15).toString(), parseInt(exchangebalance_1.div(10**15).toString()) / 1000); // 0
         
-        balance = await provider.getBalance(addr3.address);
-        console.log("Balance of addr3", balance.div(10**14).toString()); // 0        
+        addr3balance_1 = await provider.getBalance(addr3.address);
+        console.log("Balance of addr3", parseInt(addr3balance.div(10**15).toString())/1000, parseInt(addr3balance_1.div(10**15).toString()) / 1000); // 0
+
+        addr4balance_4 = await provider.getBalance(addr4.address);
+        ETHReferralCommission = await exchange.connect(addr3).viewEarnings(addr4.address, ZERO_ADDRESS);
+
+        console.log("Balance of referral", parseInt(addr4balance.div(10**15).toString())/1000, parseInt(ETHReferralCommission.div(10**15).toString())/1000); // 0
+
+        
 
     });          
     
@@ -334,13 +378,11 @@ function LogNFT(nft) {
     console.log("Order ID :: ", nft.orderID.toString());
     console.log("Royality :: ", nft.royality);    
     console.log("Status :: ", nft.status);    
-    console.log("Creator :: ", nft.creator);    
     console.log("Owner :: ", nft.owner);    
 
     console.log("Price :: ", nft.price.toString());
     console.log("minPrice :: ", nft.minPrice.toString());
     console.log("HighestBidID :: ", nft.highestBidID.toString());
-    console.log("Status :: ", nft.status);
     console.log("Auction? :: ", nft.auction);
     console.log("Referral :: ", nft.referralCommission);
     console.log("Token :: ", nft.token);    
