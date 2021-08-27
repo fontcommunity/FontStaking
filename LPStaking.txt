@@ -15,3 +15,17 @@ Initial 819080
 final reward 91591
 50% CIL 90783
 APY = 808 for 1 day 
+
+
+Earn reward by providing liquidty to BSC FONT/BNB pair 
+
+1) For First 30k $FONT 
+    48% APY (96% on Font supply)  + We cover 24% of impermenent loss in the $FONT 
+2) Next 20k $FONT
+    36% APY (72% on font supply) + We cover 12% of impermenent loss in the $FONT 
+3) Rest 
+    36% APY (72% on font Supply)
+
+Rules:
+    1) APY counts every day from the date you stake Cake-LP Tokens till you unstake the LP Tokens. 
+    2) Unstaking before 90 days will not eligible for rewards and we detuct 1% of LP tokens as tax. 

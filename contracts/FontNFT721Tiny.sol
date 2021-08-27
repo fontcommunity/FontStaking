@@ -23,16 +23,16 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
 
     //Address to distribute the Exchange fees, usually staking contract 
     //@Settings: yes
-    address private feesDistributionAddress; 
+    address public feesDistributionAddress; 
 
     //FONT ERC20 Address
     //@Settings: yes
     //@deploy: change this per network 
-    address private FontERC20Address; 
+    address public FontERC20Address; 
 
     //Settings: yes
     //Exchange commission
-    uint256 private exchangeFees = 400; //1% = 100
+    uint256 public exchangeFees = 400; //1% = 100
 
     //Role for admin
     bytes32 private constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
@@ -66,7 +66,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     //real creator of the font who is eligible to mint the NFT, able to set and edit by admin, no use once it minted 
     mapping (uint256 => address) public OriginalNFTCreators;
 
-    uint256 private OrderID = 1;
+    uint256 public OrderID = 1;
 
     //Bidding item stored here. 
     struct Bid {
@@ -99,7 +99,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     mapping (address => uint256) private FontRewardPerToken;
 
     //Reward Withdrawal pauasable
-    bool private FontRewardPaused  = true;    
+    bool public FontRewardPaused  = true;    
 
     //Orders per user
     //mapping (address => uint256[]) private UserOrders;
@@ -288,9 +288,6 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         //Set the Current order of NFT id 
         NFTs[nft].orderID = OrderID;
 
-        //Add the Order ID to user orders 
-        //UserOrders[msg.sender].push(OrderID);
-
         //Increase the Order ID count to next ID
         OrderID++;     
 
@@ -307,21 +304,22 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
             && NFTs[nft].orderID > 0 
             //NFT must my under contract custody 
             && NFTs[nft].status == 1 
+            //Payment token should be enabled 
+            && paymentTokens[token]
             //Referral commission should be over 80%
             && referralCommission < 8000), 'D');
 
         //Auction
         if(NFTs[nft].auction) {
-            require(minPrice < price && minPrice > 0, 'M');
+            require(minPrice < price && minPrice > 0 && NFTs[nft].highestBidID == 0, 'M');
             NFTs[nft].minPrice = minPrice;
         }
 
-        //Token can be edited only for spot orders and auctions orders witout single bid 
-        if(!NFTs[nft].auction || NFTs[nft].highestBidID == 0) {
-            require(paymentTokens[token]);
+        //Payment can set only if highestBidID is 0. BEcause only spot order and empty auction orders can able to change the tokens
+        if(NFTs[nft].highestBidID == 0) {
             NFTs[nft].token = token;
         }
-
+        
         //Update the Order sell price
         NFTs[nft].price = price;
         //Update the referral commission
@@ -345,7 +343,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         //Auction, cancel all the bids
         if(NFTs[nft].auction) {
             //cancel all bids and refund it. 
-            require(_orderBidsCancelAll(NFTs[nft].orderID, 0));        
+            require(_orderBidsCancelAll(nft, 0));        
         }
         //Cancel the order 
         _orderReset(nft);
@@ -389,9 +387,9 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         Bids[_bid_id].orderID = NFTs[nft].orderID;
         Bids[_bid_id].bidder = msg.sender;
         Bids[_bid_id].offer = _amount;
-        Bids[_bid_id].status = 1;
+        Bids[_bid_id].status = 1; //One means Bids are live 
 
-        //push the bid id to order id
+        //push the bid id to order id, needed to reorganize the highest bid ID
         AuctionBids[NFTs[nft].orderID].push(_bid_id);
 
         //update the order with highest bid 
@@ -404,18 +402,15 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         
         BidID++;
 
-        //ITRC20(OrderBook[_order_id].token).safeTransferFrom(msg.sender, address(this), _amount);
-
         _receiveMoney(msg.sender, NFTs[nft].token, _amount);
 
         emit BidOrder(nft, _amount, _bid_id);
 
     }     
 
-
+    //@todo check everything 
     event OrderBidApproved(uint256 _bid_id);
     function orderBidApprove(uint256 _bid_id, uint256 nft, bool _withdrawNFT) external {
-        
         require(
             //Order should be open
             (NFTs[nft].orderID > 0
@@ -430,27 +425,34 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
             //Only able to approve order of auction tyep 
             && NFTs[nft].auction), 'D');
 
-        //update the bid 
-        Bids[_bid_id].status = 2;
 
         //cancel all other bids 
-        require(_orderBidsCancelAll(Bids[_bid_id].orderID, _bid_id));
+        require(_orderBidsCancelAll(nft, _bid_id));
 
-        //move nft to buyer 
+        //update the approved bid status to filled 
+        Bids[_bid_id].status = 2;        
+
+        //move nft to buyer (outside of the contract custody) if wanted
         if(_withdrawNFT) {
             NFTs[nft].status = 2;
             _safeTransfer(address(this), Bids[_bid_id].bidder, nft, '');            
         }
-        else {
-            NFTs[nft].status = 1;
-        }
+        
+
+        uint256 _referralCommission = NFTs[nft].referralCommission;
+        address _token = NFTs[nft].token;
+        address _currentOwner = NFTs[nft].owner;
+
+        //Clear the NFT order data
+        _orderReset(nft);
+
+        //update the owner of NFT
+        NFTs[nft].owner = Bids[_bid_id].bidder; 
 
         //Distribute Money and distribute font
-        _distributePayment(Bids[_bid_id].offer, nft, NFTs[nft].referralCommission, NFTs[nft].token, Bids[_bid_id].referral,  NFTs[nft].owner, Bids[_bid_id].bidder);
+        _distributePayment(Bids[_bid_id].offer, nft, _referralCommission, NFTs[nft].royality, _token, Bids[_bid_id].referral,  _currentOwner, Bids[_bid_id].bidder);
 
-        //close the order 
-        NFTs[nft].orderID = 0; //set the NFT is not locked in order 
-        NFTs[nft].owner = Bids[_bid_id].bidder; //update the owner of NFT
+        //NFTs[nft].highestBidID = 0;
 
         //emit the event 
         emit OrderBidApproved(_bid_id);
@@ -466,6 +468,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
             && Bids[_bid_id].bidder == msg.sender
             //make sure the order is live 
             && NFTs[nft].orderID > 0
+            && NFTs[nft].orderID == Bids[_bid_id].orderID
             //make sure the nft is under custody
             && NFTs[nft].status == 1
             //Order should be auction
@@ -477,40 +480,45 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         //Send the money
         _sendMoney(Bids[_bid_id].bidder, Bids[_bid_id].offer, NFTs[nft].token);        
 
-        //@todo if a bid cancled, find highest bid and update the order book highest bid 
-        _setOrderHighestBid(Bids[_bid_id].orderID);
+        //if a bid cancled, find highest bid and update the order book highest bid 
+        _setOrderHighestBid(nft);
 
         //emit
         emit BidCanceled(_bid_id);
     }
 
+    
     function _orderBidsCancelAll(uint256 nft, uint256 _except) internal returns (bool){
         //@todo everything 
+
+        //Cancel each bids
+        //Refund the money of each bids
+        //dont change the NFT status (should be handled by caller function)
+        //
         
         require((
-            //make sure the order is live 
-            NFTs[nft].orderID > 0
-            //make sure the nft is under custody
-            && NFTs[nft].status == 1
-            //Only Auction type
-            && NFTs[nft].auction
             //check if order have enough bids 
-            && AuctionBids[NFTs[nft].orderID].length > 0
+            AuctionBids[NFTs[nft].orderID].length > 0
         ), 'D');
 
-        for(uint256 i = 0; i < AuctionBids[NFTs[nft].orderID].length; i++) {
-            if(Bids[AuctionBids[NFTs[nft].orderID][i]].status == 1 && AuctionBids[NFTs[nft].orderID][i] != _except) {
-                //Set the bit void
-                Bids[AuctionBids[NFTs[nft].orderID][i]].status = 3;
+        uint256 _order_ID = NFTs[nft].orderID;
+        uint256 _bid_ID = 0;
+        address _token = NFTs[nft].token;
+
+        for(uint256 i = 0; i < AuctionBids[_order_ID].length; i++) {
+            _bid_ID = AuctionBids[_order_ID][i];
+            if(Bids[_bid_ID].status == 1 && _bid_ID != _except) {
+                //Set the bid status to cancelled
+                Bids[_bid_ID].status = 3;
                 
                 //Send money
-                _sendMoney(Bids[AuctionBids[NFTs[nft].orderID][i]].bidder, Bids[AuctionBids[NFTs[nft].orderID][i]].offer, NFTs[nft].token);
-                //Or should i send the money, so others can withdraw?
+                _sendMoney(Bids[_bid_ID].bidder, Bids[_bid_ID].offer, _token);
 
-                delete Bids[AuctionBids[NFTs[nft].orderID][i]]; //@todo remove if this brings issue 
+                //delete Bids[_bid_ID]; //@todo remove if this brings issue 
             }
         }
-        NFTs[nft].highestBidID = 0;
+        
+        
         return true;
     }
 
@@ -531,53 +539,10 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         _receiveMoney(msg.sender, NFTs[nft].token, NFTs[nft].price);
         //Buy the order, take money
         _orderBuy(nft, _ref, _withdrawNFT);
+
+        //emit the event 
+        emit OrderBought(nft);        
     }
-
-    function orderBuyWithETH(uint256 nft, address _ref, bool _withdrawNFT) public payable {
-        require ((
-            //Check enough ETH
-            msg.value >= NFTs[nft].price
-            //Only ETH 
-            && NFTs[nft].token == address(0)
-            //Only for Live NFT
-            && NFTs[nft].status == 1
-            //Order type should not be auction.
-            && !NFTs[nft].auction
-            // Only for live order
-            && NFTs[nft].status == 1
-        ), 'D');
-
-        _orderBuy(nft, _ref, _withdrawNFT);
-    }
-
-    function _orderBuy(uint256 nft, address _ref, bool _withdrawNFT) internal {
-        //close the order 
-        //Change the order status 
-        //Update the order id to 0
-        
-        uint256 _order_id = NFTs[nft].orderID;
-        uint256 _price = NFTs[nft].price;
-        uint256 _referralCommission = NFTs[nft].referralCommission;
-        address _currentOwner = NFTs[nft].owner;
-        address _token = NFTs[nft].token;
-
-        //Change the owner  
-        NFTs[nft].owner = msg.sender;    
-        //Reset NFT order data
-        _orderReset(nft);
-        //Distribute the payments
-        _distributePayment(_price, nft, _referralCommission, _token, _ref, _currentOwner, msg.sender);  
-
-        if(_withdrawNFT) {
-            NFTs[nft].status = 2;
-            _safeTransfer(address(this), msg.sender, nft, "");   
-        }
-
-        //@todo emit the event 
-        emit OrderBought(_order_id);
-        
-    }
-
 
 
 
@@ -666,17 +631,9 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     /*********************************** Views *******************************/
     /*************************************************************************/    
 
-    //function viewOrder(uint256 _id) external view returns (Order memory) {
-    //    return OrderBook[_id];
-    //}
-
     function viewNFT(uint256 _id) external view returns (NFT memory) {
         return NFTs[_id];
     }    
-
-    //function viewUserOrders(address _user) external view returns (uint256[] memory) {
-    //    return UserOrders[_user];
-    //}
 
     function viewPaymentMethod(address _token) external view returns (bool) {
         return paymentTokens[_token];
@@ -692,6 +649,10 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
 
     function viewBid(uint256 _id) external view returns (Bid memory) {
         return Bids[_id];
+    }
+
+    function viewOrderBids(uint256 orderID) external view returns (uint256[] memory) {
+        return AuctionBids[orderID];
     }
 
 
@@ -728,9 +689,9 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     /*************************************************************************/ 
 
     //Set the highest bid for order in order book
-    //@todo test this 
+    //This is new version which picks highest avaliable bid with status = 1
+    //Maybe use the reverse forloop to pick
     function _setOrderHighestBid(uint256 nft) internal {
-
         require((
             //Order should be Live
             NFTs[nft].orderID > 0
@@ -741,27 +702,58 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
             //There should be minimum 1 auction
             && AuctionBids[NFTs[nft].orderID].length > 0
         ), 'D');
-        
-        uint256 _highestBidID = 0;
-        uint256 _highestBidOffer = 0;
-        for(uint256 i = 0; i < AuctionBids[NFTs[nft].orderID].length; i++) {
-            if(Bids[AuctionBids[NFTs[nft].orderID][i]].status == 1 && Bids[AuctionBids[NFTs[nft].orderID][i]].offer > _highestBidOffer) {
-                _highestBidOffer = Bids[AuctionBids[NFTs[nft].orderID][i]].offer;
-                _highestBidID = AuctionBids[NFTs[nft].orderID][i];
-            }
+
+        uint256 _bidID = 0;
+        uint256 _orderID = NFTs[nft].orderID;
+        uint256 i = AuctionBids[_orderID].length - 1;
+
+        while (true) {
+            _bidID = AuctionBids[_orderID][i]; 
+            if(Bids[_bidID].status == 1) {
+                NFTs[nft].highestBidID = _bidID;
+                break;
+            }            
+            i--;
         }
-        NFTs[nft].highestBidID = _highestBidID;
+    }
+
+
+    //Helper function to buy order
+    function _orderBuy(uint256 nft, address _refAddress, bool _withdrawNFT) internal {
+        //close the order 
+        //Change the order status 
+        //Update the order id to 0
+        
+        uint256 _price = NFTs[nft].price;
+        uint256 _referralCommission = NFTs[nft].referralCommission;
+        address _currentOwner = NFTs[nft].owner;
+        address _token = NFTs[nft].token;
+
+        //Change the owner  
+        NFTs[nft].owner = msg.sender;    
+
+        //Reset NFT order data
+        _orderReset(nft);
+
+        //Distribute the payments
+        _distributePayment(_price, nft, _referralCommission, NFTs[nft].royality, _token, _refAddress, _currentOwner, msg.sender);  
+
+        if(_withdrawNFT) {
+            NFTs[nft].status = 2;
+            _safeTransfer(address(this), msg.sender, nft, "");   
+        }
+        
     }
 
 
     //Take the order payment from buyer, distribute the money to refferal commisions and exchange commission fees and to sellers
-    function _distributePayment(uint256 _amount, uint256 nft, uint256 _refCommission, address _token, address _refAddress, address _seller, address _buyer) internal {
+    function _distributePayment(uint256 _amount, uint256 nft, uint256 _refCommission, uint256 _royality, address _token, address _refAddress, address _seller, address _buyer) internal {
         
         uint256 _fees = 0;
         uint256 _tmp = 0;
         
         //Calculate exchange fee, only for non FONT tokens and ETH
-        if(_token != FontERC20Address) {
+        if(_token != FontERC20Address && exchangeFees > 0) {
             //Calculate the exchange commission
             _tmp = (_amount * exchangeFees) / (10**4);
             //Add it to exchange commission collection, we can take it later 
@@ -783,9 +775,9 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         }
 
         //Take the Royality, if royality is above 0 and add it to royality collections 
-        if(NFTs[nft].royality > 0) {
+        if(_royality > 0) {
             //Calculate the royality in amount
-            _tmp = (_amount * NFTs[nft].royality) / (10**4);
+            _tmp = (_amount * _royality) / (10**4);
             //Add Royality fees to referrer balance 
             Earnings[OriginalNFTCreators[nft]][_token] += _tmp;
             //Add Referral fess to total fees 
@@ -821,7 +813,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
 
     //Helper function to receive money, either ERC20 or ETH, 
     //@todo safety check
-    function _receiveMoney(address from, address token, uint256 amount) internal {
+    function _receiveMoney(address from, address token, uint256 amount) internal  {
         if(token == address(0)) {
             require(msg.value >= amount, 'ETH');
         }

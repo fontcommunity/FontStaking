@@ -41,7 +41,9 @@ SendMoney()
 
 Full oracle implementation for font rewards
 
+If someone bids above buy price, fill the order immediatly? User need to approve it
 
+Make all the events meaningful, especally the order data 
 
 
 ################################################################################
@@ -52,6 +54,9 @@ Font rewards
 referrals 
 Oracle price 
 
+Order bid approval and closing order needs gas reduction, code reduction and security 
+
+Check the bid cancle issue 
 
 ################################################################################
 ################################### User Flow  #################################
