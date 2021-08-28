@@ -51,9 +51,11 @@ describe("FontNFT721Tiny", function() {
 
   async function printBids(NFTID) {
     console.log("##############################################################################");
+    
     let anNFT = await exchange.connect(addr7).viewNFT(NFTID);
+    //console.log("Order ID", anNFT.orderID);
     LogNFT(anNFT);          
-    let Bids = await exchange.connect(addr7).viewOrderBids(8);
+    let Bids = await exchange.connect(addr7).viewOrderBids(anNFT.orderID);
     for(let i = 0; i < Bids.length; i++) {
         var bidID = Bids[i];
         var BID = await exchange.connect(addr7).viewBid(bidID);
@@ -79,11 +81,13 @@ describe("FontNFT721Tiny", function() {
     FontToken = await ethers.getContractFactory("MockToken");
     PaymentTokenA = await ethers.getContractFactory("MockToken"); 
     PaymentTokenB = await ethers.getContractFactory("MockToken");
+    PaymentTokenC = await ethers.getContractFactory("MockToken");
 
     //Deploy all the contracts 
     fontToken = await FontToken.deploy("font", "FONT", 18);
     ptUSDA = await PaymentTokenA.deploy("USDA", "USDA", 6);
     ptUSDB = await PaymentTokenA.deploy("USDB", "USDB", 6);
+    ptUSDC = await PaymentTokenC.deploy("USDC", "USDC", 6);
     exchange = await FontNFT721.deploy(fontToken.address, StakingAddress);
 
     console.log("FONT Token Deployed at ::", fontToken.address);
@@ -91,6 +95,8 @@ describe("FontNFT721Tiny", function() {
     console.log("Payment Token A Deployed at ::", ptUSDB.address);
     console.log("Exchange Contract Deployed at ::", exchange.address);
     console.log();console.log();console.log();console.log();
+
+    
 
   });
 
@@ -113,7 +119,9 @@ describe("FontNFT721Tiny", function() {
   });
 
   describe("Admin settings", async function(){
-
+    it("Admin can set Font Reward", async function () {
+        await exchange.connect(owner).adminEditPaymentToken(ZERO_ADDRESS, true, "1000000000000000");
+    });
   });
 
   describe("Minting NFT", async function () {
@@ -370,21 +378,25 @@ describe("FontNFT721Tiny", function() {
   });
 
  
-  describe("Auction Orders", async function () {
+  describe("Auction Orders for ERC20 Tokens", async function () {
 
     
     var NFTID = 9;
 
+    var initialValue = null;
+
+    var royalityforNFT = 400;
+
     it("Owner can mint and create Auction order", async function () {
-        await expect(exchange.connect(addr3).safeMintAndList(NFTID, 100*Mn, 3*Mn, 100, 500, ptUSDA.address, true)).to.emit(exchange, 'OrderCreated');
+        await expect(exchange.connect(addr3).safeMintAndList(NFTID, 100*Mn, 3*Mn, royalityforNFT, 500, ptUSDA.address, true)).to.emit(exchange, 'OrderCreated');
         let anNFT = await exchange.connect(addr3).viewNFT(NFTID);
         
     });
 
     it("Owner should able to edit order befor bidding", async function () {
-        await expect(exchange.connect(addr3).orderEdit(NFTID, 80*Mn, 3*Mn, 400, ptUSDA.address)).to.emit(exchange, 'OrderEdited');
+        await expect(exchange.connect(addr3).orderEdit(NFTID, 80*Mn, 3*Mn, 800, ptUSDA.address)).to.emit(exchange, 'OrderEdited');
         let anNFT = await exchange.connect(addr3).viewNFT(NFTID);
-        await expect(anNFT.referralCommission).to.equal(400);
+        await expect(anNFT.referralCommission).to.equal(800);
         await expect(anNFT.owner).to.equal(addr3.address);
         await expect(anNFT.token).to.equal(ptUSDA.address);
         await expect(anNFT.price).to.equal(80*Mn);
@@ -396,7 +408,7 @@ describe("FontNFT721Tiny", function() {
 
     });        
 
-    it("Should not can bid an order below min price", async function () {
+    it("Should not bid an order below min price", async function () {
         await expect(exchange.connect(addr4).orderBid(NFTID, 1*Mn, addr8.address)).to.be.revertedWith('D');
     });
 
@@ -404,7 +416,13 @@ describe("FontNFT721Tiny", function() {
         await ptUSDA.transfer(addr4.address, 1000*Mn);
         await ptUSDA.connect(addr4).approve(exchange.address, 1000*Mn);
 
+        var _balance = await ptUSDA.balanceOf(addr4.address);
+        //console.log("_balance", _balance.toString());
+
         await expect(exchange.connect(addr4).orderBid(NFTID, 4*Mn, addr8.address)).to.emit(exchange, 'BidOrder');
+
+        _balance = await ptUSDA.balanceOf(addr4.address);
+        //console.log("_balance after first bid", _balance.toString());        
         
         let anNFT = await exchange.connect(addr3).viewNFT(NFTID);
         //LogNFT(anNFT);
@@ -415,7 +433,7 @@ describe("FontNFT721Tiny", function() {
     });    
 
     it("Owner should not able to edit order after bidding", async function () {
-        await expect(exchange.connect(addr3).orderEdit(NFTID, 80*Mn, 3*Mn, 400, ptUSDA.address)).to.be.revertedWith('M');
+        await expect(exchange.connect(addr3).orderEdit(NFTID, 80*Mn, 3*Mn, 800, ptUSDA.address)).to.be.revertedWith('M');
 
     });    
 
@@ -423,10 +441,21 @@ describe("FontNFT721Tiny", function() {
         await ptUSDA.transfer(addr4.address, 700*Mn);
         await ptUSDA.connect(addr4).approve(exchange.address, 700*Mn);
 
+        _balance = await ptUSDA.balanceOf(addr4.address);
+        //console.log("_balance after topup", _balance.toString());           
+
+        var totalIvest = 0;
+
         for(let i = 5; i<34; i++) {
             //console.log("reached :: ", i);
             await expect(exchange.connect(addr4).orderBid(NFTID, i*Mn, addr8.address)).to.emit(exchange, 'BidOrder');
+            totalIvest += i;
         }
+
+        //console.log("Total invested in Mn", totalIvest);   
+
+        _balance = await ptUSDA.balanceOf(addr4.address);
+        //console.log("_balance after 29 bids", _balance.toString());   
 
         for(let i = 2; i<30; i++) {
             let aBid = await exchange.connect(addr4).viewBid(i);
@@ -435,11 +464,11 @@ describe("FontNFT721Tiny", function() {
 
         }
 
-        let anNFT = await exchange.connect(addr3).viewNFT(NFTID);
+        let anNFT = await exchange.viewNFT(NFTID);
         //LogNFT(anNFT);
         //console.log(addr3.address);
 
-        let aBid = await exchange.connect(addr4).viewBid(29);
+        let aBid = await exchange.viewBid(29);
         //LogBid(aBid);       
         
         //console.log(addr4.address);
@@ -447,8 +476,13 @@ describe("FontNFT721Tiny", function() {
 
 
     
-    it("Bidder should able to Cancel other bid", async function () {
+    it("Bidder should able to Cancel own bid", async function () {
         await expect(exchange.connect(addr4).orderBidCancel(30, NFTID)).to.emit(exchange, 'BidCanceled');
+
+        _balance = await ptUSDA.balanceOf(addr4.address);
+        //console.log("_balance after cancel 30 BID", _balance.toString());   
+
+        
         let anNFT = await exchange.connect(addr3).viewNFT(NFTID);
         //LogNFT(anNFT);        
     });    
@@ -457,7 +491,7 @@ describe("FontNFT721Tiny", function() {
         await expect(exchange.connect(addr4).orderBidCancel(30, NFTID)).to.be.revertedWith('D');
     });        
 
-    it("Non Bidder should not able to Cancel own bid", async function () {
+    it("Non Bidder should not able to Cancel others bid", async function () {
         await expect(exchange.connect(addr3).orderBidCancel(29, NFTID)).to.be.revertedWith('D');
     });        
     
@@ -469,6 +503,9 @@ describe("FontNFT721Tiny", function() {
     it("Bidder should able to bid higher than highest bid @todo" , async function () {
 
         console.log("@todo testall");
+        //@todo everything below 
+        //Some tokens didnt worked, try few more tokens and test it for this, better 2 tokens 
+        //Verfiy the balance mathamatcally 
 
         var thisUser = addr7;
 
@@ -489,45 +526,461 @@ describe("FontNFT721Tiny", function() {
 
     });             
 
-    it("Test All Bids ", async function () {
-        await printBids(NFTID);
-        /*
-        let anNFT = await exchange.connect(addr7).viewNFT(NFTID);
-        LogNFT(anNFT);          
-        let Bids = await exchange.connect(addr7).viewOrderBids(8);
-        for(let i = 0; i < Bids.length; i++) {
-            var bidID = Bids[i];
-            
-            var BID = await exchange.connect(addr7).viewBid(bidID);
-            console.log(bidID.toString());
-            LogBid(BID);
-            console.log();console.log();console.log();
-        }
-        */
-                 
-    });
-
 
     it("Owner should able to approve a bid ", async function () {
         console.log("@todo testall");
+        //Test the referral commission @done
+        //test the royality @done
+        //test the exchange commission @done
+        //test the buyer balance 
+        //test the seler balance
+
+        
+
+        //viewEarnings
+
+        var selectingBid = 26*Mn;
+        
+
+        commissionFeesBefore = await exchange.connect(owner).commissionFees(ptUSDA.address);
+        commissionFeesBefore = parseInt(commissionFeesBefore.toString());
+
+        referralCommissionBefore  = await exchange.connect(owner).viewEarnings(addr8.address, ptUSDA.address);
+        referralCommissionBefore = parseInt(referralCommissionBefore.toString());
+
+        royalityBefore = await exchange.connect(owner).viewEarnings(addr3.address, ptUSDA.address);
+        royalityBefore = parseInt(royalityBefore.toString());
+
+        sellerBalanceBefore = await ptUSDA.balanceOf(addr3.address);
+        sellerBalanceBefore = parseInt(sellerBalanceBefore.toString());
+
         anNFT = await exchange.connect(addr3).viewNFT(NFTID);
         //LogNFT(anNFT);                   
-        aBid = await exchange.connect(addr3).viewBid(31);
+        aBid = await exchange.connect(addr3).viewBid(23);
         //LogBid(aBid);            
-        await expect(exchange.connect(addr3).orderBidApprove(31,NFTID, false)).to.emit(exchange, 'OrderBidApproved');
+        await expect(exchange.connect(addr3).orderBidApprove(23,NFTID, false)).to.emit(exchange, 'OrderBidApproved');
         anNFT = await exchange.connect(addr3).viewNFT(NFTID);
         //LogNFT(anNFT);      
-        aBid = await exchange.connect(addr3).viewBid(31);
-        //LogBid(aBid);                              
+        aBid = await exchange.connect(addr3).viewBid(23);
+
+        _balance = await ptUSDA.balanceOf(addr4.address);
+        //console.log("_balance after approval 23 BID 26mn", _balance.toString());         
+        //LogBid(aBid);                             
+        
+        await expect(_balance.toString()).to.equal(((1700*Mn) - selectingBid) + '');
+
+        anNFT = await exchange.viewNFT(NFTID);
+
+        await expect(anNFT.owner).to.equal(addr4.address);
+
+        //Test the exchange commission fees
+        commissionFeesAfterApprove = await exchange.connect(owner).commissionFees(ptUSDA.address);
+        commissionFeesAfterApprove = parseInt(commissionFeesAfterApprove.toString());
+
+        referralCommissionAfter = await exchange.connect(owner).viewEarnings(addr8.address, ptUSDA.address);
+        referralCommissionAfter = parseInt(referralCommissionAfter.toString());
+
+
+        await expect(commissionFeesAfterApprove).to.equal((commissionFeesBefore + (selectingBid * 0.04)));
+        await expect(referralCommissionAfter).to.equal((referralCommissionBefore + (selectingBid * 0.08)));
+        
+        //sellerBalanceBefore = await ptUSDC.balanceOf(addr3.address);
+        //sellerBalanceBefore = parseInt(sellerBalanceBefore.toString());
+
+
+
+        royalityAfter = await exchange.connect(owner).viewEarnings(addr3.address, ptUSDA.address);
+        royalityAfter = parseInt(royalityAfter.toString());        
+
+        //royalityforNFT
+
+        //Should calcumate the roylaity + earnings 
+
+        sellerBalanceAfter = await ptUSDA.balanceOf(addr3.address);
+        sellerBalanceAfter = parseInt(sellerBalanceAfter.toString());
+
+
+        NFTCuts = selectingBid - (selectingBid * ((royalityforNFT/10000) + 0.04 + 0.08));
+
+        await expect((royalityAfter-royalityBefore)).to.equal(selectingBid * royalityforNFT / 10000);
+
+        await expect((sellerBalanceAfter-sellerBalanceBefore)).to.equal(NFTCuts);
+
+        //console.log("sellerBalanceAfter", sellerBalanceBefore , sellerBalanceAfter,  NFTCuts);
+
+        //await printBids(NFTID);
+
+    });             
+
+
+    it("Owner should able to cancel an auction order", async function () {
+        await exchange.connect(owner).adminEditPaymentToken(ptUSDC.address, true, 37*Mn);
+
+        //mint and create order 
+        await expect(exchange.connect(addr4).orderCreate(NFTID, 3*Mn, 1*Mn, 300, ptUSDC.address, true)).to.emit(exchange, 'OrderCreated');
+
+        //add tons of bids
+
+        await ptUSDC.transfer(addr5.address, 2000*Mn);
+        await ptUSDC.connect(addr5).approve(exchange.address, 2000*Mn);
+        
+        _balance = await ptUSDC.balanceOf(addr5.address);
+        //console.log("_balance adding ptUSDC", _balance.toString());           
+
+        var totalIvest = 0;
+
+        for(let i = 2; i<26; i++) {
+            //console.log("reached :: ", i);
+            await expect(exchange.connect(addr5).orderBid(NFTID, i*Mn, addr6.address)).to.emit(exchange, 'BidOrder');
+            totalIvest += i;
+        }
+
+        _balance = await ptUSDC.balanceOf(addr5.address);
+        //console.log("_balance after invest", _balance.toString());         
+
+        //console.log("Total Invested ::", totalIvest);
+
+        //cancel it
+        await expect(exchange.connect(addr4).orderCancel(NFTID)).to.emit(exchange, 'OrderCanceled');
+
+        _balance = await ptUSDC.balanceOf(addr5.address);
+        //console.log("_balance after cancel", _balance.toString());        
+        
+        //printBids(NFTID);
+
+        //anNFT = await exchange.connect(addr4).orderCreate(uint256 nft, uint256 price, uint256 minPrice, uint16 referralCommission, address token, bool auction)
+    });            
+  });
+  
+  describe("Auction Orders for ETH", async function () {
+
+    
+    var NFTID = 8;
+
+    var initialValue = null;
+
+    var royalityforNFT = 450;
+
+    var referralCommissionForNFT = 125;
+
+    it("Owner can mint and create Auction order", async function () {
+        await expect(exchange.connect(addr3).safeMintAndList(NFTID, 5 + dec18zerosStr, 2 + dec18zerosStr, royalityforNFT, referralCommissionForNFT, ZERO_ADDRESS, true)).to.emit(exchange, 'OrderCreated');
+        let anNFT = await exchange.connect(addr3).viewNFT(NFTID);
+        
+    });
+
+    it("Should not bid an order below min price", async function () {
+        await expect(exchange.connect(addr4).orderBid(NFTID, 1 + dec18zerosStr, addr8.address)).to.be.revertedWith('D');
+    });
+
+    it("Anyone can bid an order", async function () {
+
+        const transactionObject = {
+            from: addr4.address,
+            to: exchange.address,
+            value: 3+dec18zerosStr,// web3.utils.toWei(anOrder.price.toString(), 'wei'),
+        };        
+
+        
+        //await expect(exchange.connect(addr4).orderBid(NFTID, 3+dec18zerosStr, addr8.address)).to.emit(exchange, 'BidOrder');
+
+        await expect(exchange.connect(addr4).orderBid(NFTID, 3+dec18zerosStr, addr8.address, { value: 3+dec18zerosStr })).to.emit(exchange, 'BidOrder');
+
+        //await expect(exchange.connect(addr1).orderBuy(6, addr4.address, false, { value: anOrder.price.toString() })).to.emit(exchange, 'OrderBought');
+        
+        
+        let anNFT = await exchange.connect(addr3).viewNFT(NFTID);
+        //LogNFT(anNFT);
+
+        let aBid = await exchange.connect(addr3).viewBid(anNFT.highestBidID);
+        //LogBid(aBid);
+        
+    });    
+
+    
+
+    it("Testing 100 bids gas cost", async function () {
+
+        var totalIvest = 0;
+
+        for(let i = 4; i<24; i++) {
+            //console.log("reached :: ", i);
+            await expect(exchange.connect(addr4).orderBid(NFTID, i+dec18zerosStr, addr8.address, { value: i+dec18zerosStr })).to.emit(exchange, 'BidOrder');
+            totalIvest += i;
+        }
+
+        
+        for(let i = 4; i < 24; i++) {
+            let aBid = await exchange.connect(addr4).viewBid(i+53);
+
+            await expect(aBid.offer).to.equal(i+dec18zerosStr);
+
+        }
+
+        //await printBids(NFTID);
+
+        let anNFT = await exchange.viewNFT(NFTID);
+        //LogNFT(anNFT);
+        //console.log(addr3.address);
+
+        //let aBid = await exchange.viewBid(29);
+        //LogBid(aBid);       
+        
+        //console.log(addr4.address);
+    });
+
+
+    
+    it("Bidder should able to Cancel own bid", async function () {
+
+        addr4balanceBefore = await provider.getBalance(addr4.address);
+
+        aBid = await exchange.connect(addr4).viewBid(72);
+        //LogBid(aBid);
+
+        await expect(exchange.connect(addr4).orderBidCancel(72, NFTID)).to.emit(exchange, 'BidCanceled');
+
+        addr4balanceAfter = await provider.getBalance(addr4.address);
+        //console.log("_balance after cancel 30 BID", _balance.toString());   
+
+        aBid = await exchange.connect(addr4).viewBid(72);
+        //LogBid(aBid);
+
+        //console.log("addr4balanceAfter", addr4balanceBefore.div("1000000000000000000").toString(), addr4balanceAfter.div("1000000000000000000").toString());   
+        
+
+        ETHBalance = parseInt(addr4balanceAfter.div("1000000000000000000").toString()) - parseInt(addr4balanceBefore.div("1000000000000000000").toString());
+
+        await expect(ETHBalance).to.equal(19);
+
+
+        let anNFT = await exchange.connect(addr3).viewNFT(NFTID);
+
+
+        //LogNFT(anNFT);        
+    });    
+
+    it("Bidder should not able to Cancel canceled bid", async function () {
+        await expect(exchange.connect(addr4).orderBidCancel(30, NFTID)).to.be.revertedWith('D');
+    });        
+
+    it("Non Bidder should not able to Cancel others bid", async function () {
+        await expect(exchange.connect(addr3).orderBidCancel(29, NFTID)).to.be.revertedWith('D');
+    });        
+    
+
+    it("Bidder should not able to bid lower than highest bid", async function () {
+        await expect(exchange.connect(addr4).orderBid(NFTID, 20 + dec18zerosStr, addr8.address)).to.be.revertedWith('D');
+    });         
+
+    it("Bidder should able to bid higher than highest bid @todo" , async function () {
+
+        //console.log("@todo testall");
+        //@todo everything below 
+        //Some tokens didnt worked, try few more tokens and test it for this, better 2 tokens 
+        //Verfiy the balance mathamatcally 
+
+        var thisUser = addr7;
+
+
+        let anNFT = await exchange.connect(thisUser).viewNFT(NFTID);
+        
+        let aBid = await exchange.connect(thisUser).viewBid(29);
+            
+        addr4balanceBefore = await provider.getBalance(thisUser.address);
+
+
+        await expect(exchange.connect(thisUser).orderBid(NFTID, 25 + dec18zerosStr, addr8.address,{ value: 25+dec18zerosStr })).to.emit(exchange, 'BidOrder');
+
+
+        addr4balanceAfter = await provider.getBalance(thisUser.address);
+
+
+        ETHBalance = parseInt(addr4balanceBefore.div("1000000000000000000").toString()) - parseInt(addr4balanceAfter.div("1000000000000000000").toString());
+
+        await expect(ETHBalance).to.equal(25);
+
+        anNFT = await exchange.connect(thisUser).viewNFT(NFTID);
+
+        aBid = await exchange.connect(thisUser).viewBid(31);
+
+    });             
+
+
+    it("Owner should able to approve a bid ", async function () {
+        //console.log("@todo testall");
+
+        
+        var selectingBid = 20000000000000000000;
+
+        commissionFeesBefore = await exchange.commissionFees(ZERO_ADDRESS);
+
+        referralCommissionBefore = parseInt(((await exchange.viewEarnings(addr8.address, ZERO_ADDRESS)).div("100000000000000")).toString());        
+
+        sellerBalanceBefore = parseInt(((await provider.getBalance(addr3.address)).div("100000000000000")).toString());
+
+        royalityBefore = await exchange.viewEarnings(addr3.address, ZERO_ADDRESS);
+
+
+
+        anNFT = await exchange.connect(addr3).viewNFT(NFTID);
+        //LogNFT(anNFT);                   
+        aBid = await exchange.connect(addr3).viewBid(73);
+        //LogBid(aBid);            
+        await expect(exchange.connect(addr3).orderBidApprove(73,NFTID, false)).to.emit(exchange, 'OrderBidApproved');
+        anNFT = await exchange.connect(addr3).viewNFT(NFTID);
+        //LogNFT(anNFT);      
+        aBid = await exchange.connect(addr3).viewBid(73);
+
+        _balance = (await provider.getBalance(addr4.address)).toString();
+
+        //console.log("_balance after approval 23 BID 26mn", _balance.toString());         
+        //LogBid(aBid);                             
+        
+        //await expect(_balance).to.equal(160000);
+        //console.log("_balance", _balance);
+
+        anNFT = await exchange.viewNFT(NFTID);
+
+        await expect(anNFT.owner).to.equal(addr4.address);
+
+        
+        commissionFeesAfterApprove = await exchange.commissionFees(ZERO_ADDRESS);
+
+        referralCommissionAfter = await exchange.viewEarnings(addr8.address, ZERO_ADDRESS);
+        
+        referralCommission__ = aBid.offer.mul(referralCommissionForNFT).div(10000);
+
+        //var tmpCommission = selectingBid
+
+        await expect((referralCommissionAfter)).to.equal(referralCommission__);
+
+        _exchangeCommision = aBid.offer.mul("400").div(10000);
+
+        
+        await expect(commissionFeesAfterApprove.sub(commissionFeesBefore)).to.equal(_exchangeCommision);  
+        
+        
+        //sellerBalanceBefore = await ptUSDC.balanceOf(addr3.address);
+        //sellerBalanceBefore = parseInt(sellerBalanceBefore.toString());
+
+        royalityAfter = await exchange.viewEarnings(addr3.address, ZERO_ADDRESS);
+        _royalityAmount = aBid.offer.mul(royalityforNFT).div("10000");
+
+
+        await expect(royalityAfter.sub(royalityBefore)).to.equal(_royalityAmount);
+
+        //royalityforNFT
+
+        //Should calcumate the roylaity + earnings 
+
+        sellerBalanceAfter = await ptUSDA.balanceOf(addr3.address);
+        sellerBalanceAfter = parseInt(sellerBalanceAfter.toString());
+
+
+        NFTCuts = selectingBid - (selectingBid * ((royalityforNFT/10000) + 0.04 + 0.08));
+
+
+        //await expect((sellerBalanceAfter-sellerBalanceBefore)).to.equal(NFTCuts);
+
+        //console.log("sellerBalanceAfter", sellerBalanceBefore , sellerBalanceAfter,  NFTCuts);
+
+        //await printBids(NFTID);
 
     });             
 
 
     it("Owner should able to cancel an auction order", async function () {
 
+        //mint and create order 
+        
+        //await expect(exchange.connect(addr4).orderCreate(NFTID, 3*Mn, 1*Mn, 300, ptUSDC.address, true)).to.emit(exchange, 'OrderCreated');
+
+
+        await expect(exchange.connect(addr4).orderCreate(NFTID, 5 + dec18zerosStr, 2 + dec18zerosStr, 300, ZERO_ADDRESS, true)).to.emit(exchange, 'OrderCreated');
+
+
+        //add tons of bids
+
+        _balance = await provider.getBalance(addr5.address);
+        
+        
+        console.log("_balance before investment", _balance.div("1000000000000000000").toString());           
+
+        var totalIvest = 0;
+
+        for(let i = 3; i<23; i++) {
+            //console.log("reached :: ", i);
+            await expect(exchange.connect(addr5).orderBid(NFTID, i + dec18zerosStr, addr6.address, { value: i+dec18zerosStr })).to.emit(exchange, 'BidOrder');
+            totalIvest += i;
+        }
+
+        _balance = await provider.getBalance(addr5.address);
+        console.log("_balance after investment", _balance.div("1000000000000000000").toString());                   
+        //console.log("_balance after invest", _balance.toString());         
+
+        console.log("Total Invested ::", totalIvest);
+
+        //cancel it
+        await expect(exchange.connect(addr4).orderCancel(NFTID)).to.emit(exchange, 'OrderCanceled');
+
+        _balance = await provider.getBalance(addr5.address);
+        console.log("_balance after order cancel", _balance.div("1000000000000000000").toString()); 
+
+        //console.log("_balance after cancel", _balance.toString());        
+        
+        //printBids(NFTID);
+
+        //anNFT = await exchange.connect(addr4).orderCreate(uint256 nft, uint256 price, uint256 minPrice, uint16 referralCommission, address token, bool auction)
     });            
   });
   
+
+  describe("Check the $FONT rewards", async function () {
+
+    it("Check reward Balance", async function () {
+        payments = [
+            ZERO_ADDRESS,
+            ptUSDA.address,
+            ptUSDB.address,
+            ptUSDC.address
+        ];
+
+        
+        for(let p in payments) {
+            var payment = payments[p];
+            var _reward = await exchange.FontRewardPerToken(payment);
+            console.log("Font Reward pr token :: ", payment, _reward.toString());
+        }
+    });
+
+    it("Check reward Balance", async function () {
+
+        users = [
+            owner.address,
+            addr1.address,
+            addr2.address,
+            addr3.address,
+            addr4.address,
+            addr5.address,
+            addr6.address,
+            addr7.address,
+            addr8.address,
+        ]
+
+
+        for(let u in users) {
+            var user = users[u];
+            var _reward = await exchange.viewFontRewards(user);
+            console.log("Font Reward for :: ", user, _reward.toString());
+        }
+
+    });
+        
+
+        
+
+  });
 
 });
 

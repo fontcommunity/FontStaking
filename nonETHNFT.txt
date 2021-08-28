@@ -52,11 +52,16 @@ Make all the events meaningful, especally the order data
 
 Font rewards
 referrals 
-Oracle price 
+Oracle price for font rewards
 
 Order bid approval and closing order needs gas reduction, code reduction and security 
 
 Check the bid cancle issue 
+
+witdrawals, 
+views
+referral and fees 
+
 
 ################################################################################
 ################################### User Flow  #################################

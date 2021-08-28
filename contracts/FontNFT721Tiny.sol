@@ -90,13 +90,13 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     mapping (address => mapping(address => uint256)) private Earnings;
 
     //Commission fees earned by exchange, per token, subject to reset on withdrawan
-    mapping (address => uint256) private commissionFees;
+    mapping (address => uint256) public commissionFees;
 
     //Font Rewards for buyers. Keep it only to buyers, no reward for sellers.
     mapping (address => uint256) private FontRewards;
     
     //Font rewards per token, this is set by admin later by oracle, make sure it should be using pull method  
-    mapping (address => uint256) private FontRewardPerToken;
+    mapping (address => uint256) public FontRewardPerToken;
 
     //Reward Withdrawal pauasable
     bool public FontRewardPaused  = true;    
@@ -117,6 +117,9 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         paymentTokens[address(0)] = true;
         //Add FONT as Payment Token 
         paymentTokens[_FontERC20Address] = true;
+
+        
+        
     }    
 
     //Mint the NFT and transfer to minter
@@ -452,8 +455,6 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         //Distribute Money and distribute font
         _distributePayment(Bids[_bid_id].offer, nft, _referralCommission, NFTs[nft].royality, _token, Bids[_bid_id].referral,  _currentOwner, Bids[_bid_id].bidder);
 
-        //NFTs[nft].highestBidID = 0;
-
         //emit the event 
         emit OrderBidApproved(_bid_id);
     }
@@ -475,6 +476,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
             && NFTs[nft].auction
         ), 'D');
 
+        //Set the Bid status to cancelled
         Bids[_bid_id].status = 3;
 
         //Send the money
@@ -514,7 +516,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
                 //Send money
                 _sendMoney(Bids[_bid_ID].bidder, Bids[_bid_ID].offer, _token);
 
-                //delete Bids[_bid_ID]; //@todo remove if this brings issue 
+                delete Bids[_bid_ID]; //@todo remove if this brings issue 
             }
         }
         
