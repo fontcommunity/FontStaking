@@ -24,12 +24,15 @@ describe("FontNFT721Tiny", function() {
   let addr8;
   let addrs;
 
+  let PaymentTokenD;
 
   let provider;
 
   const Mn = 1000000;
   const Bn = 1000000000;
   const dec18zerosStr = "000000000000000000";
+
+  decimalsptUSDD = 18;
 
   let fontNFTTokens;
   let exchange;
@@ -82,12 +85,18 @@ describe("FontNFT721Tiny", function() {
     PaymentTokenA = await ethers.getContractFactory("MockToken"); 
     PaymentTokenB = await ethers.getContractFactory("MockToken");
     PaymentTokenC = await ethers.getContractFactory("MockToken");
+    PaymentTokenD = await ethers.getContractFactory("MockToken");
+    
+    
+    
+
 
     //Deploy all the contracts 
     fontToken = await FontToken.deploy("font", "FONT", 18);
     ptUSDA = await PaymentTokenA.deploy("USDA", "USDA", 6);
     ptUSDB = await PaymentTokenA.deploy("USDB", "USDB", 6);
     ptUSDC = await PaymentTokenC.deploy("USDC", "USDC", 6);
+    ptUSDD = await PaymentTokenD.deploy("USDD", "USDD", decimalsptUSDD);    
     exchange = await FontNFT721.deploy(fontToken.address, StakingAddress);
 
     console.log("FONT Token Deployed at ::", fontToken.address);
@@ -936,14 +945,62 @@ describe("FontNFT721Tiny", function() {
   });
   
 
-  describe("Check the $FONT rewards", async function () {
+  describe("Check the FONT rewards", async function () {
 
-    it("Check reward Balance", async function () {
+
+    it("Check Font reward for ERC20", async function () {
+        var NFTID = 7;
+        //Load money in both the accounts 
+
+        var dualAccounts = [
+            addr6, addr7
+        ];
+
+        
+        ptUSDDZeros = "0".repeat(decimalsptUSDD);
+
+        amountsPerFont = 10 + ptUSDDZeros;
+
+
+        await exchange.connect(owner).adminEditPaymentToken(ptUSDD.address, true, amountsPerFont);
+
+
+        await expect(exchange.connect(addr3).safeMint(NFTID, 250)).to.emit(exchange, 'Transfer');
+
+        await expect(exchange.connect(addr3).moveNFTin(NFTID)).to.emit(exchange, 'Transfer');
+
+
+        await expect(exchange.connect(addr3).orderCreate(NFTID, 10 + ptUSDDZeros, 0, 150, ptUSDD.address, false)).to.emit(exchange, 'OrderCreated');// be.revertedWith('D');
+
+        await ptUSDD.transfer(addr6.address, 1000 + ptUSDDZeros);
+        await ptUSDD.connect(addr6).approve(exchange.address, 1000 + ptUSDDZeros);
+
+
+        await expect(exchange.connect(addr6).orderBuy(NFTID, addr4.address, false)).to.emit(exchange, 'OrderBought');
+        
+        await expect(exchange.connect(addr6).orderCreate(NFTID, 250 + ptUSDDZeros, 0, 150, ptUSDD.address, false)).to.emit(exchange, 'OrderCreated');// be.revertedWith('D');
+
+        await ptUSDD.transfer(addr7.address, 1000 + ptUSDDZeros);
+        await ptUSDD.connect(addr7).approve(exchange.address, 1000 + ptUSDDZeros);
+        await expect(exchange.connect(addr7).orderBuy(NFTID, addr4.address, false)).to.emit(exchange, 'OrderBought');
+
+
+        for(let i =0; i < 25; i++) {
+            //console.log(i, i%2);
+            //await expect(exchange.connect(dualAccounts[i%2]).orderCreate(NFTID, 100*Mn, 0, 150, ptUSDD.address, false)).to.be.revertedWith('D');
+        }
+
+
+
+    });
+
+    it("Check Font reward per token", async function () {
         payments = [
             ZERO_ADDRESS,
             ptUSDA.address,
             ptUSDB.address,
-            ptUSDC.address
+            ptUSDC.address,
+            ptUSDD.address
         ];
 
         
@@ -957,7 +1014,7 @@ describe("FontNFT721Tiny", function() {
     it("Check reward Balance", async function () {
 
         users = [
-            owner.address,
+            
             addr1.address,
             addr2.address,
             addr3.address,
@@ -972,7 +1029,7 @@ describe("FontNFT721Tiny", function() {
         for(let u in users) {
             var user = users[u];
             var _reward = await exchange.viewFontRewards(user);
-            console.log("Font Reward for :: ", user, _reward.toString());
+            console.log("Font Reward for :: ", u , user, _reward.toString());
         }
 
     });

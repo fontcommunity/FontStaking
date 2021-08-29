@@ -368,7 +368,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         NFTs[nft].token = address(0);
     }
 
-    //@todo add ETH support
+    //add ETH support
     event BidOrder(uint256 nft, uint256 _amount, uint256 _bid_id);
     function orderBid(uint256 nft, uint256 _amount, address _ref) external payable {
         
@@ -411,7 +411,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
 
     }     
 
-    //@todo check everything 
+    //check everything 
     event OrderBidApproved(uint256 _bid_id);
     function orderBidApprove(uint256 _bid_id, uint256 nft, bool _withdrawNFT) external {
         require(
@@ -489,15 +489,8 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
         emit BidCanceled(_bid_id);
     }
 
-    
-    function _orderBidsCancelAll(uint256 nft, uint256 _except) internal returns (bool){
-        //@todo everything 
-
-        //Cancel each bids
-        //Refund the money of each bids
-        //dont change the NFT status (should be handled by caller function)
-        //
-        
+    //Cancel all the Bids of an order except
+    function _orderBidsCancelAll(uint256 nft, uint256 _except) internal returns (bool){        
         require((
             //check if order have enough bids 
             AuctionBids[NFTs[nft].orderID].length > 0
@@ -515,8 +508,8 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
                 
                 //Send money
                 _sendMoney(Bids[_bid_ID].bidder, Bids[_bid_ID].offer, _token);
-
-                delete Bids[_bid_ID]; //@todo remove if this brings issue 
+                // remove if this brings issue 
+                delete Bids[_bid_ID]; 
             }
         }
         
@@ -663,7 +656,6 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     /*************************************************************************/    
     
     //Claim Referral Fees or royality fees
-    //@todo for ETH 
     event EarningsClaimed(address, address, uint256);
     function claimEarnings(address _token) external {
         //Claimer should have enough balance
@@ -789,7 +781,6 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
 
         //Font Rewards only of amount is greater than 0 and token have reward program
         if(_amount > 0 && FontRewardPerToken[_token] > 0) {
-            //@todo test this calculation
             FontRewards[_buyer] += (_amount * 10**18) / FontRewardPerToken[_token];
         }        
 
@@ -801,7 +792,7 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     }
 
     //Helper function to send money, either ERC20 token or ETH, 
-    //@todo safety check
+    //safety check
     function _sendMoney(address to, uint256 amount, address token) internal {
         //https://solidity-by-example.org/sending-ether/
         if(token == address(0)) {
@@ -814,7 +805,6 @@ contract FontNFT721Tiny is Context, ERC721, ERC721URIStorage, ERC721Burnable, Ac
     }
 
     //Helper function to receive money, either ERC20 or ETH, 
-    //@todo safety check
     function _receiveMoney(address from, address token, uint256 amount) internal  {
         if(token == address(0)) {
             require(msg.value >= amount, 'ETH');

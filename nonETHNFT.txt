@@ -52,7 +52,7 @@ Make all the events meaningful, especally the order data
 
 Font rewards
 referrals 
-Oracle price for font rewards
+Oracle price for font rewards (external contract)
 
 Order bid approval and closing order needs gas reduction, code reduction and security 
 
